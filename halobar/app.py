@@ -149,17 +149,22 @@ def cmd_run(args: argparse.Namespace) -> int:
         webbrowser.open(url)
         return 0
 
-    service = LyricsService(ServiceConfig(
-        align=Align(config.align),
-        animation=config.animation,
-        standby_scene=config.standby_scene,
-        standby_scene_option=config.standby_scene_option,
-        standby_after=config.standby_after,
-        scroll_long_lines=config.scroll_long_lines,
-        line_mode=config.line_mode,
-        auto_check_updates=config.auto_check_updates,
-        update_proxy=config.update_proxy,
-    ))
+    service = LyricsService(
+        ServiceConfig(
+            align=Align(config.align),
+            animation=config.animation,
+            color=tuple(config.color) if config.color and len(config.color) == 3 else None,
+            standby_scene=config.standby_scene,
+            standby_scene_option=config.standby_scene_option,
+            standby_after=config.standby_after,
+            scroll_long_lines=config.scroll_long_lines,
+            line_mode=config.line_mode,
+            lyric_lang=config.lyric_lang,
+            auto_check_updates=config.auto_check_updates,
+            update_proxy=config.update_proxy,
+        ),
+        settings=config,
+    )
 
     console = None
     console_url = config.console_url()

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "halobar"
-version = "0.1.2"
+version = "0.2.0"
 description = "Lyrics and custom pixel content for the EDIFIER / 花再 Halo PixelBar"
 requires-python = ">=3.11"
 dependencies = []

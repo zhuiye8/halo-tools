@@ -12,7 +12,8 @@ Design notes
   or woken early by WinRT SMTC change events.
 * Non-device errors (media read or lyric fetch failures) never disconnect the
   HID screen or overwrite the initial display snapshot.
-* The service keeps a :class:`ServiceStatus` snapshot that any thread may read.
+* Per-track lyric offsets and manual song-id overrides are persisted when a
+  :class:`halobar.settings.Settings` instance is attached.
 * On stop, the display snapshot taken at start is restored and all media/update
   resources are released cleanly.
 """
@@ -49,11 +50,20 @@ class ServiceStatus:
     source: str = "none"
     track: str = ""
     artist: str = ""
+    track_key: str = ""
     position: float | None = None
     duration: float | None = None
     playing: bool = False
     line: str = ""
+    display_text: str = ""
+    display_mode: str = "idle"          # idle | text | cleared | scene | standby | restored
+    display_scene: int | None = None
+    color: tuple[int, int, int] = (255, 255, 255)
+    clock_offset: float = 0.0
+    lyric_index: int = -1
+    lyric_count: int = 0
     lyrics_source: str = ""
+    smtc_health: str = "ok"             # ok | backoff | circuit-open | custom
     state: str = "idle"
     last_error: str = ""
     upload_state: str = "idle"          # idle | uploading | done | error
@@ -90,6 +100,7 @@ class ServiceConfig:
     align: Align = Align.CENTER
     scroll: Scroll | None = None
     animation: int | None = None
+    color: tuple[int, int, int] | None = None
     standby_scene: int | None = 8
     standby_after: float = 20.0
     poll_seconds: float = 0.1
@@ -99,6 +110,7 @@ class ServiceConfig:
     scroll_long_lines: bool = True
     scroll_threshold_units: int = 32
     line_mode: str = "page"
+    lyric_lang: str = "original"        # original | translation | bilingual
     page_units: int = 32
     scroll_lead_spaces: int = 2
     interlude_clear_after: float = 4.0
@@ -119,8 +131,10 @@ class LyricsService:
         screen_factory: ScreenFactory | None = None,
         reader: Callable[..., object] | None = None,
         lyrics_client: NeteaseClient | None = None,
+        settings=None,
     ) -> None:
         self.config = config or ServiceConfig()
+        self.settings = settings
         self._screen_factory = screen_factory or (lambda: Screen())
         self._custom_reader = reader
         self._playback_reader: PlaybackReader | None = None
@@ -139,24 +153,30 @@ class LyricsService:
         self._paused = threading.Event()
         self._suspended = threading.Event()
         self._restore_requested = threading.Event()
-        self._status = ServiceStatus()
+        self._status = ServiceStatus(
+            color=self.config.color or (255, 255, 255),
+        )
         self._engine: LyricsEngine | None = None
         self._screen: Screen | None = None
         self._snapshot: DisplaySnapshot | None = None
         self._nudge_queue: list[float] = []
         self._next_line_requested = False
+        self._jump_line_index: int | None = None
+        self._reset_offset_requested = False
         self._upload_job: UploadJob | None = None
         self._uploading = False
         self._scene_request: tuple[int, int] | None = None
+        self._color_request: tuple[int, int, int] | None = None
         self._update_thread: threading.Thread | None = None
         self._update_check_requested = threading.Event()
         self._update_apply_requested = threading.Event()
         self._release = None
 
-        # Decoupled media polling cache.
+        # Decoupled media polling cache & active lyrics snapshot for UI timeline.
         self._cached_playback: Playback | None = None
         self._next_media_poll: float = 0.0
         self._last_media_warn_at: float = 0.0
+        self._active_lyrics: Lyrics = Lyrics()
 
     # ------------------------------------------------------------------ control
     def start(self) -> None:
@@ -196,12 +216,122 @@ class LyricsService:
 
     def nudge_to_next_line(self) -> None:
         """Jump the clock forward so the next lyric line starts now."""
-        self._next_line_requested = True
+        with self._lock:
+            self._next_line_requested = True
+
+    def jump_to_line(self, index: int) -> None:
+        """Align the playback clock so line ``index`` starts right now."""
+        with self._lock:
+            self._jump_line_index = int(index)
+
+    def reset_offset(self) -> None:
+        """Reset manual timing offset for the current track back to 0."""
+        with self._lock:
+            self._reset_offset_requested = True
+
+    def request_color(self, rgb: tuple[int, int, int] | None) -> None:
+        """Set or clear the PixelBar RGB text/accent colour."""
+        with self._lock:
+            if rgb is None:
+                self.config.color = None
+                if self._engine is not None:
+                    self._engine.config.color = None
+                    self._engine.force_redraw()
+                return
+            clean = (
+                max(0, min(255, int(rgb[0]))),
+                max(0, min(255, int(rgb[1]))),
+                max(0, min(255, int(rgb[2]))),
+            )
+            self.config.color = clean
+            self._color_request = clean
+            if self._engine is not None:
+                self._engine.config.color = clean
+                self._engine.force_redraw()
+            self._status = replace(self._status, color=clean, updated_at=time.time())
 
     def media_diagnostics(self) -> dict[str, object]:
         if self._playback_reader is None:
             return {"mode": "custom-reader"}
         return self._playback_reader.diagnostics()
+
+    # ------------------------------------------------------------- lyrics API
+    def lyrics_timeline(self) -> dict[str, object]:
+        """Thread-safe snapshot of the current song's lyric timeline for the UI."""
+        with self._lock:
+            lyrics = self._active_lyrics
+            status = self._status
+            lines = [
+                {
+                    "index": idx,
+                    "start": round(line.start, 2),
+                    "end": round(line.end, 2),
+                    "text": line.text,
+                    "translation": line.translation,
+                }
+                for idx, line in enumerate(lyrics.lines)
+            ]
+            return {
+                "track_key": status.track_key,
+                "title": status.track,
+                "artist": status.artist,
+                "source": status.lyrics_source,
+                "offset": round(status.clock_offset, 2),
+                "active_index": status.lyric_index,
+                "display_text": status.display_text,
+                "has_translation": any(bool(item["translation"]) for item in lines),
+                "lines": lines,
+            }
+
+    def lyric_candidates(self) -> list[dict[str, object]]:
+        """Search NetEase candidates for the currently playing track."""
+        status = self.status()
+        if not status.track:
+            return []
+        search_fn = getattr(self._lyrics_client, "search_candidates", None)
+        if not callable(search_fn):
+            return []
+        matches = search_fn(status.track, status.artist, status.duration or 0.0)
+        return [
+            {
+                "song_id": item.song_id,
+                "title": item.title,
+                "artist": item.artist,
+                "duration": round(item.duration_ms / 1000.0, 1) if item.duration_ms else 0.0,
+                "score": round(item.score, 2),
+            }
+            for item in matches
+        ]
+
+    def select_lyric_candidate(self, song_id: int) -> dict[str, object]:
+        """Switch the active track's lyrics to an explicit NetEase song id."""
+        status = self.status()
+        if not status.track:
+            raise ValueError("当前没有正在播放的曲目")
+        fetch_fn = getattr(self._lyrics_client, "fetch_by_id", None)
+        if callable(fetch_fn):
+            lyrics = fetch_fn(int(song_id), status.track, status.artist, status.duration or 0.0)
+        else:
+            lyrics = self._lyrics_client.lyrics_for(
+                status.track, status.artist, status.duration or 0.0, str(song_id)
+            )
+        with self._lock:
+            self._active_lyrics = lyrics
+            if self._engine is not None:
+                self._engine.set_lyrics(lyrics)
+            self._status = replace(
+                self._status,
+                lyrics_source=lyrics.source,
+                lyric_count=len(lyrics.lines),
+                lyric_index=-1,
+                updated_at=time.time(),
+            )
+            if self.settings is not None and status.track_key:
+                self.settings.set_track_song_id(status.track_key, str(song_id))
+                self.settings.save()
+        log.info("switched lyrics for %s to song_id=%s (%d lines)",
+                 status.track, song_id, len(lyrics.lines))
+        return self.lyrics_timeline()
 
     # ------------------------------------------------------------------- assets
     def submit_upload(self, job: UploadJob) -> None:
@@ -211,10 +341,10 @@ class LyricsService:
             self._suspended.clear()
             self._status = replace(self._status, upload_state="queued", upload_progress=0.0)
 
-    def request_scene(self, category: int, option: int) -> None:
+    def request_scene(self, category: int, option: int = 0) -> None:
         """Switch the screen to a scene (e.g. the uploaded asset) right now."""
         with self._lock:
-            self._scene_request = (category, option)
+            self._scene_request = (int(category), int(option))
 
     def _do_upload(self, job: UploadJob) -> None:
         screen = self._screen
@@ -239,6 +369,7 @@ class LyricsService:
             asset_name=job.name, asset_frames=job.frames,
             asset_category=job.category, asset_option=job.option,
             asset_time=time.time(),
+            display_mode="scene", display_scene=job.category, display_text="",
         )
         log.info("asset uploaded: %s (%d frames, scene %d/%d)",
                  job.name, job.frames, job.category, job.option)
@@ -328,8 +459,12 @@ class LyricsService:
         animation: int | None | str = "keep",
         scroll_long_lines: bool | None = None,
         line_mode: str | None = None,
+        lyric_lang: str | None = None,
         page_units: int | None = None,
         standby_after: float | None = None,
+        standby_scene: int | None | str = "keep",
+        standby_scene_option: int | None = None,
+        color: list[int] | tuple[int, int, int] | None | str = "keep",
     ) -> None:
         """Apply live settings from the console."""
         with self._lock:
@@ -339,6 +474,10 @@ class LyricsService:
                 if line_mode not in ("page", "scroll", "first"):
                     raise ValueError("line_mode must be page/scroll/first")
                 self.config.line_mode = line_mode
+            if lyric_lang is not None:
+                if lyric_lang not in ("original", "translation", "bilingual"):
+                    raise ValueError("lyric_lang must be original/translation/bilingual")
+                self.config.lyric_lang = lyric_lang
             if page_units is not None:
                 units = int(page_units)
                 if not 8 <= units <= 64:
@@ -359,16 +498,46 @@ class LyricsService:
                 if not 0 <= seconds <= 600:
                     raise ValueError("standby_after must be 0..600")
                 self.config.standby_after = seconds
+            if standby_scene != "keep":
+                if standby_scene is None:
+                    self.config.standby_scene = None
+                else:
+                    scene_id = int(standby_scene)
+                    if not 0 <= scene_id <= 16:
+                        raise ValueError("standby_scene must be 0..16 or null")
+                    self.config.standby_scene = scene_id
+            if standby_scene_option is not None:
+                opt = int(standby_scene_option)
+                if not 0 <= opt <= 255:
+                    raise ValueError("standby_scene_option must be 0..255")
+                self.config.standby_scene_option = opt
+            if color != "keep":
+                if color is None:
+                    self.config.color = None
+                else:
+                    if len(color) != 3:  # type: ignore[arg-type]
+                        raise ValueError("color must be [R, G, B] or null")
+                    clean = (
+                        max(0, min(255, int(color[0]))),  # type: ignore[index]
+                        max(0, min(255, int(color[1]))),  # type: ignore[index]
+                        max(0, min(255, int(color[2]))),  # type: ignore[index]
+                    )
+                    self.config.color = clean
+                    self._color_request = clean
+                    self._status = replace(self._status, color=clean, updated_at=time.time())
             engine = self._engine
             if engine is not None:
                 engine.config.align = self.config.align
                 engine.config.animation = self.config.animation
                 engine.config.scroll_long_lines = self.config.scroll_long_lines
                 engine.config.line_mode = self.config.line_mode
+                engine.config.lyric_lang = self.config.lyric_lang
                 engine.config.page_units = self.config.page_units
                 engine.config.standby_after = self.config.standby_after
-                engine._current_chunk = None  # force a redraw with the new settings
-                engine._current_scroll = None
+                engine.config.standby_scene = self.config.standby_scene
+                engine.config.standby_scene_option = self.config.standby_scene_option
+                engine.config.color = self.config.color
+                engine.force_redraw()
 
     def request_restore(self) -> None:
         """Restore the original screen and stop following until :meth:`resume`."""
@@ -402,33 +571,47 @@ class LyricsService:
                         await asyncio.sleep(self.config.reconnect_seconds)
                         continue
                 if self._upload_job is not None:
-                    job, self._upload_job = self._upload_job, None
-                    self._uploading = True
-                    self._set_status(upload_state="uploading", upload_progress=0.0)
-                    try:
-                        await loop.run_in_executor(None, self._do_upload, job)
-                    except Exception as exc:  # noqa: BLE001 - a bad upload must not kill the worker
-                        log.warning("upload failed: %s", exc)
-                        self._set_status(upload_state="error", last_error=str(exc))
-                    finally:
-                        self._uploading = False
-                    await asyncio.sleep(0.1)
-                    continue
+                    with self._lock:
+                        job, self._upload_job = self._upload_job, None
+                    if job is not None:
+                        self._uploading = True
+                        self._set_status(upload_state="uploading", upload_progress=0.0)
+                        try:
+                            await loop.run_in_executor(None, self._do_upload, job)
+                        except Exception as exc:  # noqa: BLE001 - a bad upload must not kill the worker
+                            log.warning("upload failed: %s", exc)
+                            self._set_status(upload_state="error", last_error=str(exc))
+                        finally:
+                            self._uploading = False
+                        await asyncio.sleep(0.1)
+                        continue
+                if self._color_request is not None:
+                    with self._lock:
+                        rgb, self._color_request = self._color_request, None
+                    if rgb is not None and hasattr(self._screen, "set_color"):
+                        try:
+                            self._screen.set_color(rgb)
+                            log.info("screen colour set to #%02x%02x%02x", *rgb)
+                        except (RenderError, OSError) as exc:
+                            self._set_status(last_error=str(exc))
                 if self._scene_request is not None:
-                    category, option = self._scene_request
-                    self._scene_request = None
-                    try:
-                        self._screen.show_scene(category, option=option)
-                        log.info("switched to scene %d/%d", category, option)
-                    except (RenderError, OSError) as exc:
-                        self._set_status(last_error=str(exc))
-                    await asyncio.sleep(0.1)
-                    continue
+                    with self._lock:
+                        req, self._scene_request = self._scene_request, None
+                    if req is not None:
+                        category, option = req
+                        try:
+                            self._screen.show_scene(category, option=option)
+                            self._set_status(display_mode="scene", display_scene=category, display_text="")
+                            log.info("switched to scene %d/%d", category, option)
+                        except (RenderError, OSError) as exc:
+                            self._set_status(last_error=str(exc))
+                        await asyncio.sleep(0.1)
+                        continue
                 if self._restore_requested.is_set():
                     self._restore_requested.clear()
                     self._restore_now()
                     self._suspended.set()
-                    self._set_status(state="restored")
+                    self._set_status(state="restored", display_mode="restored", display_text="")
                     await asyncio.sleep(0.2)
                     continue
                 if self._suspended.is_set() or self._paused.is_set():
@@ -462,6 +645,11 @@ class LyricsService:
             log.info("device not ready: %s", exc)
             self._set_status(connected=False, state="waiting-device", last_error=str(exc))
             return False
+
+        device_rgb = self.config.color or (255, 255, 255)
+        if self.config.color is None and hasattr(snapshot, "state") and len(snapshot.state) >= 4:
+            device_rgb = (snapshot.state[1], snapshot.state[2], snapshot.state[3])
+
         self._screen = screen
         self._snapshot = snapshot
         self._engine = LyricsEngine(screen, EngineConfig(
@@ -470,12 +658,14 @@ class LyricsService:
             align=self.config.align,
             scroll=self.config.scroll,
             animation=self.config.animation,
+            color=self.config.color,
             standby_scene=self.config.standby_scene,
             standby_scene_option=self.config.standby_scene_option,
             standby_after=self.config.standby_after,
             scroll_long_lines=self.config.scroll_long_lines,
             scroll_threshold_units=self.config.scroll_threshold_units,
             line_mode=self.config.line_mode,
+            lyric_lang=self.config.lyric_lang,
             page_units=self.config.page_units,
             scroll_lead_spaces=self.config.scroll_lead_spaces,
             interlude_clear_after=self.config.interlude_clear_after,
@@ -484,7 +674,8 @@ class LyricsService:
         self._next_media_poll = 0.0
         log.info("device connected (firmware %s)", screen.firmware)
         self._set_status(
-            connected=True, firmware=screen.firmware, state="following", last_error=""
+            connected=True, firmware=screen.firmware, state="following",
+            color=device_rgb, last_error="",
         )
         return True
 
@@ -515,6 +706,12 @@ class LyricsService:
         self._cached_playback = result if isinstance(result, Playback) else None
         return self._cached_playback
 
+    def _persist_track_offset(self, track_key: str, offset: float) -> None:
+        if self.settings is None or not track_key:
+            return
+        self.settings.set_track_offset(track_key, offset)
+        self.settings.save()
+
     async def _tick(self, loop: asyncio.AbstractEventLoop) -> None:
         assert self._engine is not None
         playback = await self._poll_playback()
@@ -523,63 +720,134 @@ class LyricsService:
             nudges, self._nudge_queue = self._nudge_queue, []
             next_line = self._next_line_requested
             self._next_line_requested = False
-        for seconds in nudges:
-            self._engine.clock.nudge(seconds)
-            log.info("clock nudged %+.1fs", seconds)
-        if next_line:
-            self._align_to_next_line()
+            jump_index = self._jump_line_index
+            self._jump_line_index = None
+            reset_offset = self._reset_offset_requested
+            self._reset_offset_requested = False
 
         if playback is not None and playback.valid:
             if playback.track_key != self._engine.clock.track_key:
+                saved_offset = (
+                    self.settings.get_track_offset(playback.track_key)
+                    if self.settings is not None else 0.0
+                )
+                self._engine.clock.offset = saved_offset
                 try:
                     lyrics = await loop.run_in_executor(None, self._load_lyrics, playback)
                 except Exception as exc:  # noqa: BLE001 - lyric error must not drop HID
                     log.warning("lyric lookup failed: %s", exc)
                     lyrics = Lyrics(title=playback.title, artist=playback.artist, source="error")
-                self._engine.set_lyrics(lyrics)
-                self._set_status(lyrics_source=lyrics.source)
-                log.info("track: %s - %s (%d lines, %s)", playback.title, playback.artist,
-                         len(lyrics.lines), lyrics.source)
+                with self._lock:
+                    self._active_lyrics = lyrics
+                    self._engine.set_lyrics(lyrics)
+                self._set_status(
+                    lyrics_source=lyrics.source,
+                    lyric_count=len(lyrics.lines),
+                    clock_offset=saved_offset,
+                )
+                log.info("track: %s - %s (%d lines, %s, offset=%+.1fs)",
+                         playback.title, playback.artist, len(lyrics.lines),
+                         lyrics.source, saved_offset)
+
+        offset_changed = False
+        if reset_offset:
+            delta = -self._engine.clock.offset
+            self._engine.clock.offset = 0.0
+            self._engine.clock.nudge(delta)
+            self._engine.force_redraw()
+            offset_changed = True
+            log.info("clock offset reset to 0.0s")
+        for seconds in nudges:
+            self._engine.clock.offset = max(-30.0, min(30.0, self._engine.clock.offset + seconds))
+            self._engine.clock.nudge(seconds)
+            self._engine.force_redraw()
+            offset_changed = True
+            log.info("clock nudged %+.1fs (offset %+.1fs)", seconds, self._engine.clock.offset)
+        if next_line:
+            if self._align_to_next_line():
+                offset_changed = True
+        if jump_index is not None:
+            if self._align_to_line_index(jump_index):
+                offset_changed = True
+        if offset_changed and playback is not None and playback.valid:
+            self._persist_track_offset(playback.track_key, self._engine.clock.offset)
 
         self._engine.tick(playback)
 
+        smtc_health = "custom"
+        if self._playback_reader is not None:
+            mode = str(self._playback_reader.smtc.diagnostics().get("mode", "ok"))
+            smtc_health = mode if mode in ("backoff", "circuit-open") else "ok"
+
         if playback is None or not playback.valid:
-            self._set_status(source="none", track="", artist="", position=None,
-                             duration=None, playing=False, line="", state="idle")
+            self._set_status(
+                source="none", track="", artist="", track_key="",
+                position=None, duration=None, playing=False, line="",
+                display_text=self._engine.current_chunk,
+                display_mode=self._engine.display_mode,
+                display_scene=self._engine.display_scene,
+                lyric_index=-1, smtc_health=smtc_health, state="idle",
+            )
             return
         line = self._engine._current_line  # noqa: SLF001 - same package, read-only status
         reported_pos = (
-            self._engine.clock.position if playback.position is not None else None
+            self._engine.clock.position if playback.position is not None else self._engine.clock.position
         )
         self._set_status(
             source=playback.aumid.split(":")[0] if playback.aumid else "smtc",
             track=playback.title,
             artist=playback.artist,
+            track_key=playback.track_key,
             position=reported_pos,
             duration=playback.duration,
             playing=playback.playing,
             line=line.text if line else "",
+            display_text=self._engine.current_chunk,
+            display_mode=self._engine.display_mode,
+            display_scene=self._engine.display_scene,
+            clock_offset=round(self._engine.clock.offset, 2),
+            lyric_index=self._engine.current_line_index,
+            lyric_count=len(self._engine.lyrics.lines),
+            smtc_health=smtc_health,
             state="following" if playback.playing else "paused",
         )
 
     def _load_lyrics(self, playback: Playback) -> Lyrics:
+        override_id = (
+            self.settings.get_track_song_id(playback.track_key)
+            if self.settings is not None else ""
+        )
+        song_id = override_id or playback.song_id
         return self._lyrics_client.lyrics_for(
-            playback.title, playback.artist, playback.duration or 0.0, playback.song_id)
+            playback.title, playback.artist, playback.duration or 0.0, song_id)
 
-    def _align_to_next_line(self) -> None:
+    def _align_to_next_line(self) -> bool:
         """Move the clock to the next line's start (the "lyrics are behind" fix)."""
         engine = self._engine
         if engine is None or not engine.lyrics:
-            return
+            return False
         position = engine.clock.position
         upcoming = next((line for line in engine.lyrics.lines if line.start > position + 0.3), None)
         if upcoming is None:
-            return
+            return False
         delta = upcoming.start - position
+        engine.clock.offset = max(-30.0, min(30.0, engine.clock.offset + delta))
         engine.clock.nudge(delta)
-        engine._current_chunk = None
-        engine._current_scroll = None
+        engine.force_redraw()
         log.info("aligned to next line at %.1fs (%+.1fs)", upcoming.start, delta)
+        return True
+
+    def _align_to_line_index(self, index: int) -> bool:
+        engine = self._engine
+        if engine is None or not engine.lyrics or not (0 <= index < len(engine.lyrics.lines)):
+            return False
+        target = engine.lyrics.lines[index]
+        delta = target.start - engine.clock.position
+        engine.clock.offset = max(-30.0, min(30.0, engine.clock.offset + delta))
+        engine.clock.nudge(delta)
+        engine.force_redraw()
+        log.info("jumped to line #%d at %.1fs (%+.1fs)", index, target.start, delta)
+        return True
 
     # ------------------------------------------------------------------ helpers
     def _restore_now(self) -> None:
@@ -609,6 +877,6 @@ class LyricsService:
 
 
 def path_for_cache():
-    from pathlib import Path
+    from .settings import cache_dir
 
-    return Path(__file__).resolve().parent.parent / ".cache" / "lyrics"
+    return cache_dir()

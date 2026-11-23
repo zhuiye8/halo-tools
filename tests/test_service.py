@@ -236,3 +236,57 @@ def test_screen_closes_owned_transport_on_handshake_failure(monkeypatch):
     except OSError:
         pass
     assert closed["n"] == 1
+
+
+def test_service_persists_per_track_offset_and_switches_candidate(tmp_path):
+    from halobar.lyrics import SongMatch
+    from halobar.settings import Settings
+
+    class CandidateLyricsClient(FakeLyricsClient):
+        def search_candidates(self, title, artist="", duration=0.0, limit=8):
+            return [SongMatch(999, title, artist, 200000, score=2.2)]
+
+        def fetch_by_id(self, song_id, title="", artist="", duration=0.0):
+            return Lyrics([
+                LyricLine(0.0, f"候选词-{song_id}", 3.0, "Candidate trans"),
+                LyricLine(3.0, "第二句候选", 6.0),
+            ], title=title, artist=artist, source="netease")
+
+    cfg_path = tmp_path / "settings.json"
+    user_settings = Settings.load(cfg_path)
+    # Redirect save() to tmp_path so tests never touch %LOCALAPPDATA%.
+    orig_save = user_settings.save
+    user_settings.save = lambda path=None: orig_save(cfg_path)
+
+    screen = FakeScreen()
+    service = LyricsService(
+        ServiceConfig(poll_seconds=0.02, media_poll_seconds=0.04),
+        screen_factory=lambda: screen,
+        reader=make_reader(),
+        lyrics_client=CandidateLyricsClient(),
+        settings=user_settings,
+    )
+    service.start()
+    try:
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and not screen.texts:
+            time.sleep(0.02)
+
+        # Nudge persists per-track offset
+        service.nudge(1.5)
+        time.sleep(0.1)
+        assert user_settings.get_track_offset("测试歌曲\n测试歌手") == 1.5
+
+        # Candidate search & switch persists song_id
+        cands = service.lyric_candidates()
+        assert cands and cands[0]["song_id"] == 999
+        tl = service.select_lyric_candidate(999)
+        assert tl["lines"][0]["text"] == "候选词-999"
+        assert user_settings.get_track_song_id("测试歌曲\n测试歌手") == "999"
+
+        # Reset offset clears it
+        service.reset_offset()
+        time.sleep(0.1)
+        assert user_settings.get_track_offset("测试歌曲\n测试歌手") == 0.0
+    finally:
+        service.stop()

@@ -72,6 +72,13 @@ def test_console_requires_token_and_serves_status():
 
         page = urllib.request.urlopen(f"{base}/", timeout=5).read().decode()
         assert token in page and "halobar" in page and "正在播放" in page
+
+        with urllib.request.urlopen(f"{base}/app.css", timeout=5) as resp:
+            assert resp.status == 200 and "text/css" in resp.headers.get("Content-Type", "")
+            assert "--accent" in resp.read().decode()
+        with urllib.request.urlopen(f"{base}/app.js", timeout=5) as resp:
+            assert resp.status == 200 and "javascript" in resp.headers.get("Content-Type", "")
+            assert "renderMirror" in resp.read().decode()
     finally:
         console.stop()
 
@@ -150,6 +157,38 @@ def test_console_commands_and_settings():
         status, payload = fetch(f"{base}/api/debug/threads?token={token}")
         assert status == 200
         assert "threads" in payload and "handles" in payload and "media" in payload
+
+        # v0.2.0 endpoints: lyrics timeline, language/scene/color settings & commands
+        status, payload = fetch(f"{base}/api/lyrics?token={token}")
+        assert status == 200 and "lines" in payload
+
+        status, payload = fetch(f"{base}/api/settings?token={token}", "POST", {
+            "lyric_lang": "bilingual", "standby_scene": 0, "color": [130, 105, 255],
+        })
+        assert status == 200, payload
+        assert service.config.lyric_lang == "bilingual"
+        assert service.config.standby_scene == 0
+        assert service.config.color == (130, 105, 255)
+
+        status, payload = fetch(f"{base}/api/command?token={token}", "POST", {
+            "action": "color", "rgb": [56, 189, 248],
+        })
+        assert status == 200 and service.config.color == (56, 189, 248)
+
+        status, payload = fetch(f"{base}/api/command?token={token}", "POST", {
+            "action": "scene", "category": 4, "option": 0,
+        })
+        assert status == 200
+
+        status, payload = fetch(f"{base}/api/command?token={token}", "POST", {
+            "action": "jump_line", "value": 0,
+        })
+        assert status == 200
+
+        status, payload = fetch(f"{base}/api/command?token={token}", "POST", {
+            "action": "reset_offset",
+        })
+        assert status == 200
     finally:
         console.stop()
 

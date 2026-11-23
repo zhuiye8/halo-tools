@@ -1,16 +1,9 @@
 """Local web console for the halobar service.
 
-A dependency-free ``http.server`` bound to 127.0.0.1 that exposes the service status
-and a handful of commands.  The page is served by this module; every API call needs
-the session token that is injected into the page (or passed as ``?token=``).
-
-Endpoints
----------
-GET  /                     -> console page
-GET  /api/status           -> service status + settings
-GET  /api/logs             -> recent log lines
-POST /api/command          -> {"action": "pause"|"resume"|"restore"|"nudge", "value": 0.5}
-POST /api/settings         -> {"align": "...", "animation": 2, "scroll_long_lines": true, ...}
+A dependency-free ``http.server`` bound to 127.0.0.1 that exposes the service
+status, live lyric timeline, candidate picker, hardware controls and pixel
+editor.  Every API call requires the session token injected into the page
+(or passed as ``?token=`` / ``X-Halo-Token``).
 """
 
 from __future__ import annotations
@@ -31,6 +24,18 @@ from .service import LyricsService
 log = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).resolve().parent / "web"
+
+BUILTIN_SCENES = [
+    {"category": 8, "option": 0, "name": "声波"},
+    {"category": 0, "option": 0, "name": "时钟"},
+    {"category": 1, "option": 0, "name": "游戏"},
+    {"category": 2, "option": 0, "name": "工作"},
+    {"category": 3, "option": 0, "name": "阅读"},
+    {"category": 4, "option": 0, "name": "猫咪"},
+    {"category": 5, "option": 0, "name": "小狗"},
+    {"category": 6, "option": 0, "name": "梗图"},
+    {"category": 7, "option": 0, "name": "赛博"},
+]
 
 
 class RingBufferHandler(logging.Handler):
@@ -57,13 +62,7 @@ class RingBufferHandler(logging.Handler):
 
 
 class _ConsoleHTTPServer(ThreadingHTTPServer):
-    """Thread-per-request server that does not keep finished threads around.
-
-    ``ThreadingHTTPServer`` defaults to ``block_on_close = True``, which makes the
-    server retain every request thread object for its whole lifetime.  For a page
-    that polls twice a second that list grows without bound, so it is disabled and
-    request handlers get a socket timeout to avoid stuck threads.
-    """
+    """Thread-per-request server that does not keep finished threads around."""
 
     daemon_threads = True
     block_on_close = False
@@ -121,20 +120,28 @@ class ConsoleServer:
     # -------------------------------------------------------------------- helpers
     def status_payload(self) -> dict:
         from . import __version__, buildinfo
+        from .shortcut import autostart_enabled
 
         status = asdict(self.service.status())
+        status["color"] = list(status.get("color") or [255, 255, 255])
         config = self.service.config
         status["settings"] = {
             "align": config.align.value,
             "animation": config.animation,
+            "color": list(config.color) if config.color is not None else None,
             "scroll_long_lines": config.scroll_long_lines,
             "line_mode": config.line_mode,
+            "lyric_lang": config.lyric_lang,
             "page_units": config.page_units,
             "auto_check_updates": config.auto_check_updates,
             "update_proxy": config.update_proxy,
             "standby_after": config.standby_after,
             "standby_scene": config.standby_scene,
+            "standby_scene_option": config.standby_scene_option,
+            "theme": getattr(self.settings, "theme", "system") if self.settings is not None else "system",
+            "autostart": autostart_enabled(),
         }
+        status["scenes"] = BUILTIN_SCENES
         status["version"] = __version__
         status["build"] = buildinfo.load()
         status["firmware"] = status.get("firmware") or "-"
@@ -158,32 +165,79 @@ class ConsoleServer:
             self.service.nudge(max(-30.0, min(30.0, seconds)))
         elif action == "next_line":
             self.service.nudge_to_next_line()
+        elif action == "jump_line":
+            try:
+                index = int(payload.get("value"))  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return HTTPStatus.BAD_REQUEST, {"error": "value must be a line index"}
+            self.service.jump_to_line(index)
+        elif action == "reset_offset":
+            self.service.reset_offset()
+        elif action == "scene":
+            try:
+                category = int(payload.get("category"))  # type: ignore[arg-type]
+                option = int(payload.get("option", 0))
+            except (TypeError, ValueError):
+                return HTTPStatus.BAD_REQUEST, {"error": "invalid scene category/option"}
+            self.service.request_scene(category, option)
+        elif action == "color":
+            rgb = payload.get("rgb")
+            if rgb is None:
+                self.service.request_color(None)
+            elif isinstance(rgb, list) and len(rgb) == 3:
+                try:
+                    self.service.request_color((int(rgb[0]), int(rgb[1]), int(rgb[2])))
+                except (TypeError, ValueError):
+                    return HTTPStatus.BAD_REQUEST, {"error": "rgb must be 3 integers"}
+            else:
+                return HTTPStatus.BAD_REQUEST, {"error": "rgb must be [R, G, B] or null"}
+            if self.settings is not None:
+                self.settings.apply_color(self.service.config.color)
+                self.settings.save()
         else:
             return HTTPStatus.BAD_REQUEST, {"error": f"unknown action {action!r}"}
         log.info("console command: %s %s", action, payload.get("value", ""))
         return HTTPStatus.OK, {"ok": True, "status": self.status_payload()}
 
     def handle_settings(self, payload: dict) -> tuple[int, dict]:
+        kwargs: dict[str, object] = {}
+        for key in ("align", "scroll_long_lines", "line_mode", "lyric_lang",
+                    "page_units", "standby_after", "standby_scene_option"):
+            if key in payload and payload[key] is not None:
+                kwargs[key] = payload[key]
+        if "animation" in payload:
+            kwargs["animation"] = payload["animation"]
+        if "standby_scene" in payload:
+            kwargs["standby_scene"] = payload["standby_scene"]
+        if "color" in payload:
+            kwargs["color"] = payload["color"]
+
         try:
-            self.service.update_config(
-                align=payload.get("align"),
-                animation=payload.get("animation"),
-                scroll_long_lines=payload.get("scroll_long_lines"),
-                line_mode=payload.get("line_mode"),
-                page_units=payload.get("page_units"),
-                standby_after=payload.get("standby_after"),
-            )
+            self.service.update_config(**kwargs)  # type: ignore[arg-type]
         except (TypeError, ValueError) as exc:
             return HTTPStatus.BAD_REQUEST, {"error": str(exc)}
+
+        if "autostart" in payload and payload["autostart"] is not None:
+            from .shortcut import set_autostart
+
+            try:
+                set_autostart(bool(payload["autostart"]))
+            except OSError as exc:
+                return HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"开机自启设置失败：{exc}"}
+
         if self.settings is not None:
             config = self.service.config
             self.settings.apply_align(config.align.value)
             self.settings.apply_animation(config.animation)
+            self.settings.apply_lyric_lang(config.lyric_lang)
+            self.settings.apply_color(config.color)
             self.settings.scroll_long_lines = config.scroll_long_lines
             self.settings.line_mode = config.line_mode
             self.settings.standby_after = config.standby_after
             self.settings.standby_scene = config.standby_scene
             self.settings.standby_scene_option = config.standby_scene_option
+            if "theme" in payload:
+                self.settings.apply_theme(payload.get("theme"))
             if payload.get("auto_check_updates") is not None:
                 self.settings.auto_check_updates = bool(payload.get("auto_check_updates"))
                 self.service.config.auto_check_updates = self.settings.auto_check_updates
@@ -192,6 +246,27 @@ class ConsoleServer:
                 self.service.config.update_proxy = payload["update_proxy"]
             self.settings.save()
         return HTTPStatus.OK, {"ok": True, "status": self.status_payload()}
+
+    def handle_lyrics(self) -> tuple[int, dict]:
+        return HTTPStatus.OK, self.service.lyrics_timeline()
+
+    def handle_lyric_candidates(self) -> tuple[int, dict]:
+        try:
+            items = self.service.lyric_candidates()
+        except Exception as exc:  # noqa: BLE001
+            return HTTPStatus.BAD_GATEWAY, {"error": f"搜索候选歌词失败：{exc}"}
+        return HTTPStatus.OK, {"candidates": items}
+
+    def handle_lyric_select(self, payload: dict) -> tuple[int, dict]:
+        try:
+            song_id = int(payload.get("song_id"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return HTTPStatus.BAD_REQUEST, {"error": "song_id must be an integer"}
+        try:
+            timeline = self.service.select_lyric_candidate(song_id)
+        except (ValueError, OSError) as exc:
+            return HTTPStatus.BAD_REQUEST, {"error": str(exc)}
+        return HTTPStatus.OK, {"ok": True, "lyrics": timeline}
 
     def handle_shortcut(self) -> tuple[int, dict]:
         from .shortcut import create_desktop_shortcut
@@ -218,7 +293,6 @@ class ConsoleServer:
         """Diagnostics: how many threads exist and where they are stuck."""
         import collections
         import sys
-        import threading
         import traceback
 
         frames = sys._current_frames()
@@ -316,13 +390,13 @@ class ConsoleServer:
             "bytes": len(stream),
             "category": processed.category,
             "option": processed.option,
-            "preview": "data:image/png;base64," + __import__("base64").b64encode(preview).decode(),
+            "preview": "data:image/png;base64," + base64.b64encode(preview).decode(),
         }
 
     def handle_asset_display(self, payload: dict) -> tuple[int, dict]:
         try:
-            category = int(payload.get("category"))
-            option = int(payload.get("option"))
+            category = int(payload.get("category"))  # type: ignore[arg-type]
+            option = int(payload.get("option"))      # type: ignore[arg-type]
         except (TypeError, ValueError):
             status = self.service.status()
             if not status.asset_category:
@@ -334,6 +408,11 @@ class ConsoleServer:
 
 _DEFAULT_MAX_BODY = 64 * 1024
 _UPLOAD_MAX_BODY = 50 * 1024 * 1024
+
+_STATIC_FILES = {
+    "/app.css": ("app.css", "text/css; charset=utf-8"),
+    "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+}
 
 
 def _init_handle_counter():
@@ -376,7 +455,7 @@ class _PayloadTooLarge(ValueError):
 
 def _make_handler(server: ConsoleServer):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "halobar-console/0.1"
+        server_version = "halobar-console/0.2"
         protocol_version = "HTTP/1.0"
         timeout = 15          # socketserver applies this to each connection
 
@@ -389,14 +468,17 @@ def _make_handler(server: ConsoleServer):
             token = (query.get("token") or [None])[0] or self.headers.get("X-Halo-Token")
             return token == server.token
 
-        def _json(self, status: int, payload: dict) -> None:
-            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        def _send_bytes(self, status: int, body: bytes, content_type: str) -> None:
             self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
+
+        def _json(self, status: int, payload: dict) -> None:
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            self._send_bytes(status, body, "application/json; charset=utf-8")
 
         def _body(self, max_bytes: int = _DEFAULT_MAX_BODY) -> dict:
             try:
@@ -419,11 +501,25 @@ def _make_handler(server: ConsoleServer):
             if path in ("/", "/index.html"):
                 self._serve_page()
                 return
+            if path in _STATIC_FILES:
+                filename, mime = _STATIC_FILES[path]
+                target = STATIC_DIR / filename
+                if not target.exists():
+                    self._json(HTTPStatus.NOT_FOUND, {"error": "asset missing"})
+                    return
+                self._send_bytes(HTTPStatus.OK, target.read_bytes(), mime)
+                return
             if not self._authorised():
                 self._json(HTTPStatus.UNAUTHORIZED, {"error": "token required"})
                 return
             if path == "/api/status":
                 self._json(HTTPStatus.OK, server.status_payload())
+            elif path == "/api/lyrics":
+                status, data = server.handle_lyrics()
+                self._json(status, data)
+            elif path == "/api/lyrics/candidates":
+                status, data = server.handle_lyric_candidates()
+                self._json(status, data)
             elif path == "/api/logs":
                 self._json(HTTPStatus.OK, {"lines": server.logs.snapshot()})
             elif path == "/api/debug/threads":
@@ -447,6 +543,8 @@ def _make_handler(server: ConsoleServer):
                 status, data = server.handle_command(payload)
             elif path == "/api/settings":
                 status, data = server.handle_settings(payload)
+            elif path == "/api/lyrics/select":
+                status, data = server.handle_lyric_select(payload)
             elif path == "/api/asset/upload":
                 status, data = server.handle_asset_upload(payload)
             elif path == "/api/asset/display":
@@ -468,12 +566,6 @@ def _make_handler(server: ConsoleServer):
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "console assets missing"})
                 return
             html = page.read_text(encoding="utf-8").replace("__HALO_TOKEN__", server.token)
-            body = html.encode("utf-8")
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
+            self._send_bytes(HTTPStatus.OK, html.encode("utf-8"), "text/html; charset=utf-8")
 
     return Handler

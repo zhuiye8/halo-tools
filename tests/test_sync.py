@@ -217,3 +217,32 @@ def test_engine_writes_changing_lines_and_standby():
     engine.clock._last_tick -= 0.1
     engine.tick(Playback(title="t", artist="a", playing=False, position=None))
     assert screen.scenes == [8]
+
+
+def test_lyric_lang_translation_and_bilingual():
+    screen = RecordingScreen()
+    lyrics = Lyrics([LyricLine(0.0, "Hello world", 4.0, "你好世界")])
+
+    # translation mode
+    engine = LyricsEngine(screen, EngineConfig(lyric_lang="translation"))
+    engine.set_lyrics(lyrics)
+    engine.tick(Playback(title="t", artist="a", playing=True, position=1.0))
+    assert screen.calls[-1]["text"] == "你好世界"
+
+    # bilingual mode: first half original, second half translation with fade
+    screen2 = RecordingScreen()
+    engine2 = LyricsEngine(screen2, EngineConfig(lyric_lang="bilingual"))
+    engine2.set_lyrics(lyrics)
+    engine2.tick(Playback(title="t", artist="a", playing=True, position=0.5))
+    assert screen2.calls[-1]["text"] == "Hello world"
+    engine2.tick(Playback(title="t", artist="a", playing=True, position=2.8))
+    assert screen2.calls[-1]["text"] == "你好世界"
+    assert screen2.calls[-1]["animation"] == 2
+
+
+def test_engine_forwards_color_to_screen():
+    screen = RecordingScreen()
+    engine = LyricsEngine(screen, EngineConfig(color=(130, 105, 255)))
+    engine.set_lyrics(Lyrics([LyricLine(0.0, "测试", 4.0)]))
+    engine.tick(Playback(title="t", artist="a", playing=True, position=0.5))
+    assert screen.calls[-1]["color"] == (130, 105, 255)

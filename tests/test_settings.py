@@ -26,6 +26,28 @@ def test_settings_roundtrip(tmp_path):
     assert again.standby_after == 42
 
 
+def test_v02_settings_and_per_track_memory(tmp_path):
+    path = tmp_path / "settings.json"
+    config = settings.Settings.load(path)
+    config.apply_lyric_lang("bilingual")
+    config.apply_theme("dark")
+    config.apply_color([130, 105, 255])
+    config.set_track_offset("如愿\n王菲", 1.5)
+    config.set_track_song_id("如愿\n王菲", "1888381008")
+    config.save(path)
+
+    again = settings.Settings.load(path)
+    assert again.lyric_lang == "bilingual"
+    assert again.theme == "dark"
+    assert again.color == [130, 105, 255]
+    assert again.get_track_offset("如愿\n王菲") == 1.5
+    assert again.get_track_song_id("如愿\n王菲") == "1888381008"
+
+    # Zeroing offset removes the entry cleanly.
+    again.set_track_offset("如愿\n王菲", 0.0)
+    assert "如愿\n王菲" not in again.track_offsets
+
+
 def test_settings_recovers_from_corruption(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text("{not json", encoding="utf-8")

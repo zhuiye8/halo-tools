@@ -88,3 +88,44 @@ def create_desktop_shortcut(name: str = "halobar",
 
 def shortcut_exists(name: str = "halobar") -> bool:
     return (_desktop_path() / f"{name}.lnk").exists()
+
+
+_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_RUN_VALUE = "halobar"
+
+
+def _autostart_command() -> str:
+    target = resolve_target()
+    if target.arguments:
+        return f'"{target.executable}" {target.arguments}'
+    return f'"{target.executable}"'
+
+
+def autostart_enabled(value_name: str = _RUN_VALUE) -> bool:
+    """True when halobar is registered in the current user's Windows Run key."""
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_READ) as key:
+            value, _ = winreg.QueryValueEx(key, value_name)
+            return bool(value)
+    except OSError:
+        return False
+
+
+def set_autostart(enabled: bool, value_name: str = _RUN_VALUE) -> bool:
+    """Register or remove halobar in ``HKCU\\...\\Run`` (no admin rights needed)."""
+    import winreg
+
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        if enabled:
+            cmd = _autostart_command()
+            winreg.SetValueEx(key, value_name, 0, winreg.REG_SZ, cmd)
+            log.info("autostart enabled: %s", cmd)
+            return True
+        try:
+            winreg.DeleteValue(key, value_name)
+            log.info("autostart disabled")
+        except FileNotFoundError:
+            pass
+        return False

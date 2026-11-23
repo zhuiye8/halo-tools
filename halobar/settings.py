@@ -68,6 +68,9 @@ class Settings:
     animation: int | None = None
     scroll_long_lines: bool = True
     line_mode: str = "page"
+    lyric_lang: str = "original"       # original | translation | bilingual
+    theme: str = "system"              # system | light | dark
+    color: list[int] | None = None     # [R, G, B] or None to follow device
     auto_check_updates: bool = True
     update_proxy: str = "auto"
     standby_after: float = 20.0
@@ -75,6 +78,8 @@ class Settings:
     standby_scene_option: int = 0
 
     last_asset: dict = field(default_factory=dict)
+    track_offsets: dict[str, float] = field(default_factory=dict)
+    track_song_ids: dict[str, str] = field(default_factory=dict)
 
     # ------------------------------------------------------------------ loading
     @classmethod
@@ -132,3 +137,49 @@ class Settings:
     def apply_animation(self, value: int | None) -> None:
         if value is None or 0 <= int(value) <= 4:
             self.animation = None if value is None else int(value)
+
+    def apply_lyric_lang(self, value: str | None) -> None:
+        if value in ("original", "translation", "bilingual"):
+            self.lyric_lang = value
+
+    def apply_theme(self, value: str | None) -> None:
+        if value in ("system", "light", "dark"):
+            self.theme = value
+
+    def apply_color(self, value: list[int] | tuple[int, int, int] | None) -> None:
+        if value is None:
+            self.color = None
+            return
+        if len(value) == 3:
+            self.color = [max(0, min(255, int(c))) for c in value]
+
+    def get_track_offset(self, track_key: str) -> float:
+        return float(self.track_offsets.get(track_key, 0.0))
+
+    def set_track_offset(self, track_key: str, offset: float) -> None:
+        if not track_key:
+            return
+        rounded = round(float(offset), 2)
+        if abs(rounded) < 0.05:
+            self.track_offsets.pop(track_key, None)
+        else:
+            self.track_offsets[track_key] = rounded
+            self._trim_dict(self.track_offsets, 200)
+
+    def get_track_song_id(self, track_key: str) -> str:
+        return str(self.track_song_ids.get(track_key, ""))
+
+    def set_track_song_id(self, track_key: str, song_id: str) -> None:
+        if not track_key:
+            return
+        if not song_id:
+            self.track_song_ids.pop(track_key, None)
+        else:
+            self.track_song_ids[track_key] = str(song_id)
+            self._trim_dict(self.track_song_ids, 200)
+
+    @staticmethod
+    def _trim_dict(mapping: dict, limit: int) -> None:
+        while len(mapping) > limit:
+            oldest = next(iter(mapping))
+            mapping.pop(oldest, None)

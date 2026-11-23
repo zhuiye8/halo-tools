@@ -4,354 +4,210 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="halo-token" content="__HALO_TOKEN__">
-<title>halobar · 花再 PixelBar 歌词</title>
-<style>
-:root {
-    /* colour */
-    --bg: #fbfbfd;
-    --surface: #ffffff;
-    --line: #ececf2;
-    --line-strong: #e0e0ea;
-    --ink: #1c1b22;
-    --ink-2: #6b6779;
-    --ink-3: #9a96a8;
-    --accent: #6c4cff;
-    --accent-hover: #5a3bf0;
-    --accent-weak: #f1eeff;
-    --ok: #1f9d6b;
-    --warn: #c7761a;
-    --err: #d93a4a;
-    /* shape */
-    --r-lg: 16px;
-    --r-md: 10px;
-    --r-pill: 999px;
-    /* space */
-    --sp-1: 4px;
-    --sp-2: 8px;
-    --sp-3: 12px;
-    --sp-4: 16px;
-    --sp-5: 24px;
-    --sp-6: 32px;
-    /* type */
-    --fs-label: 11px;
-    --fs-meta: 12px;
-    --fs-body: 14px;
-    --fs-lead: 17px;
-    --fs-title: 21px;
-    --fs-hero: 26px;
-    --fs-lyric: 32px;
-    --mono: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
-    /* motion */
-    --ease: cubic-bezier(.2, .8, .2, 1);
-    --dur: 160ms;
-    /* elevation */
-    --shadow: 0 1px 2px rgba(28, 27, 34, .04), 0 10px 26px rgba(28, 27, 34, .05);
-  }
-
-  * { box-sizing: border-box; }
-  html, body { min-height: 100%; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--ink);
-    font: var(--fs-body)/1.6 "Microsoft YaHei UI", "Segoe UI", "PingFang SC", system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-
-  .shell { max-width: 1180px; margin: 0 auto; padding: var(--sp-6) var(--sp-5) 56px; }
-
-  /* ---------------- top bar ---------------- */
-  .topbar {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-5);
-  }
-  .brand { display: flex; align-items: center; gap: var(--sp-3); }
-  .mark {
-    width: 40px; height: 40px; border-radius: var(--r-md);
-    background: var(--ink); color: #fff;
-    display: grid; place-items: center; font-size: 17px; font-weight: 700;
-  }
-  .brand h1 { margin: 0; font-size: var(--fs-title); font-weight: 700; letter-spacing: -.01em; }
-  .brand .sub { margin: 0; color: var(--ink-3); font-size: var(--fs-meta); }
-  .status { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
-
-  /* ---------------- pills ---------------- */
-  .chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    height: 28px; padding: 0 var(--sp-3);
-    border: 1px solid var(--line-strong); border-radius: var(--r-pill);
-    background: var(--surface); color: var(--ink-2);
-    font-size: var(--fs-meta); font-weight: 600;
-    transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
-  }
-  .chip::before {
-    content: ""; width: 6px; height: 6px; border-radius: 50%;
-    background: var(--ink-3); flex: 0 0 auto;
-  }
-  .chip.ok { color: var(--ok); border-color: #d5efe3; }
-  .chip.ok::before { background: var(--ok); }
-  .chip.warn { color: var(--warn); border-color: #f2e3cd; }
-  .chip.warn::before { background: var(--warn); }
-  .chip.err { color: var(--err); border-color: #f5d6da; }
-  .chip.err::before { background: var(--err); }
-
-  /* ---------------- bento ---------------- */
-  .bento { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--sp-4); }
-  .span-12 { grid-column: span 12; }
-  .span-7 { grid-column: span 7; }
-  .span-6 { grid-column: span 6; }
-  .span-5 { grid-column: span 5; }
-  @media (max-width: 940px) {
-    .bento { grid-template-columns: minmax(0, 1fr); }
-    .span-12, .span-7, .span-6, .span-5 { grid-column: span 1; }
-    .shell { padding: var(--sp-4) var(--sp-4) 40px; }
-  }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--r-lg);
-    padding: var(--sp-5);
-    box-shadow: var(--shadow);
-    min-width: 0;
-  }
-
-  .label {
-    margin: 0 0 var(--sp-3);
-    color: var(--ink-3);
-    font-size: var(--fs-label);
-    font-weight: 700;
-    letter-spacing: .08em;
-  }
-
-  /* ---------------- now playing ---------------- */
-  .track {
-    margin: 0; font-size: var(--fs-hero); font-weight: 700;
-    letter-spacing: -.015em; line-height: 1.25;
-  }
-  .artist { margin: var(--sp-1) 0 0; color: var(--ink-2); font-size: var(--fs-body); }
-  .line {
-    margin-top: var(--sp-4);
-    min-height: 52px;
-    padding: var(--sp-3) 0;
-    font-size: var(--fs-lyric);
-    font-weight: 600;
-    line-height: 1.3;
-    letter-spacing: .01em;
-    color: var(--ink);
-    word-break: break-word;
-  }
-  .progress {
-    height: 4px; background: var(--line); border-radius: var(--r-pill);
-    margin-top: var(--sp-4); overflow: hidden;
-  }
-  .progress > i {
-    display: block; height: 100%; width: 0;
-    background: var(--accent); border-radius: var(--r-pill);
-    transition: width 300ms linear;
-  }
-  .meta {
-    display: flex; justify-content: space-between;
-    margin-top: var(--sp-2); color: var(--ink-3);
-    font-size: var(--fs-meta); font-family: var(--mono);
-  }
-
-  /* ---------------- controls ---------------- */
-  .actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-4); }
-  button {
-    font: inherit; font-size: var(--fs-body); font-weight: 600;
-    height: 40px; padding: 0 var(--sp-4);
-    color: var(--ink); background: var(--surface);
-    border: 1px solid var(--line-strong); border-radius: var(--r-md);
-    cursor: pointer;
-    transition: background-color var(--dur) var(--ease),
-                border-color var(--dur) var(--ease),
-                color var(--dur) var(--ease),
-                transform 120ms var(--ease);
-  }
-  button:hover { background: #f7f7fb; border-color: #d3d3de; }
-  button:active { transform: scale(.985); }
-  button:disabled { opacity: .45; cursor: default; transform: none; }
-  button.primary {
-    background: var(--accent); border-color: var(--accent); color: #fff;
-  }
-  button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
-  button.ghost { color: var(--accent); border-color: #ded7ff; background: var(--accent-weak); }
-  button.ghost:hover { background: #e7e1ff; }
-
-  /* ---------------- forms ---------------- */
-  .field { display: flex; align-items: center; gap: var(--sp-2); color: var(--ink-2); font-size: var(--fs-meta); white-space: nowrap; }
-  .field.wide { grid-column: 1 / -1; }
-  .field.wide input[type=file] { flex: 1; min-width: 0; }
-  select, input[type=number], input[type=file] {
-    font: inherit; font-size: var(--fs-body);
-    color: var(--ink); background: var(--surface);
-    border: 1px solid var(--line-strong); border-radius: var(--r-md);
-    height: 36px; padding: 0 var(--sp-3);
-  }
-  input[type=number] { width: 88px; font-family: var(--mono); }
-  input[type=range] { accent-color: var(--accent); width: 132px; }
-  input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
-  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3); }
-  .hint { margin: var(--sp-3) 0 0; color: var(--ink-3); font-size: var(--fs-meta); line-height: 1.7; }
-
-  /* ---------------- status lists ---------------- */
-  .kv { display: grid; grid-template-columns: 88px 1fr; gap: var(--sp-2) var(--sp-3); margin: 0; font-size: var(--fs-body); }
-  .kv dt { color: var(--ink-3); }
-  .kv dd { margin: 0; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
-  .ok { color: var(--ok); font-weight: 600; }
-  .no { color: var(--warn); font-weight: 600; }
-  .bad { color: var(--err); font-weight: 600; }
-  a.link { color: var(--accent); text-decoration: none; border-bottom: 1px solid #d9d1ff; }
-  a.link:hover { border-bottom-color: var(--accent); }
-
-  /* ---------------- notice ---------------- */
-  .notice {
-    margin-bottom: var(--sp-3);
-    padding: var(--sp-3) var(--sp-4);
-    border-radius: var(--r-md);
-    background: var(--accent-weak);
-    color: #3c3268;
-    font-size: var(--fs-meta);
-    line-height: 1.8;
-  }
-  .notice b { color: var(--accent); font-weight: 700; }
-  .notice ol { margin: var(--sp-2) 0 0; padding-left: 18px; }
-  .notice li { margin: 2px 0; }
-
-  /* ---------------- asset editor ---------------- */
-  .asset-editor { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: var(--sp-5); }
-  @media (max-width: 840px) { .asset-editor { grid-template-columns: minmax(0, 1fr); } }
-  .asset-preview-panel, .asset-controls { min-width: 0; }
-  .screen-frame {
-    position: relative; padding: var(--sp-3);
-    border-radius: var(--r-md);
-    background: #14131a;
-    border: 1px solid #26242f;
-  }
-  .screen-frame canvas {
-    display: block; width: 100%; height: auto;
-    image-rendering: pixelated; border-radius: 6px;
-    background: #0b0a10; cursor: grab;
-  }
-  .screen-frame canvas.dragging { cursor: grabbing; }
-  .screen-empty {
-    position: absolute; inset: var(--sp-3);
-    display: grid; place-items: center;
-    color: #8b86a0; font-size: var(--fs-meta);
-    border: 1px dashed #3b3849; border-radius: 6px;
-    background: rgba(11, 10, 16, .55);
-  }
-  .asset-bar-wrap { height: 4px; background: var(--line); border-radius: var(--r-pill); margin-top: var(--sp-4); overflow: hidden; }
-  .asset-bar-wrap > i { display: block; height: 100%; width: 0; background: var(--accent); }
-  .asset-meta {
-    display: flex; justify-content: space-between; gap: var(--sp-3);
-    margin-top: var(--sp-2); color: var(--ink-3);
-    font-size: var(--fs-meta); font-family: var(--mono);
-  }
-
-  /* ---------------- logs ---------------- */
-  pre#logs {
-    margin: 0; padding: var(--sp-3);
-    max-height: 300px; overflow: auto;
-    background: #f7f7fb; border: 1px solid var(--line);
-    border-radius: var(--r-md);
-    font: 12px/1.7 var(--mono); color: var(--ink-2);
-    white-space: pre-wrap;
-  }
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-thumb { background: #dedee8; border-radius: 10px; border: 3px solid transparent; background-clip: content-box; }
-  ::-webkit-scrollbar-track { background: transparent; }
-
-  footer {
-    display: flex; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap;
-    margin-top: var(--sp-5); padding-top: var(--sp-4);
-    border-top: 1px solid var(--line);
-    color: var(--ink-3); font-size: var(--fs-meta);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    * { animation: none !important; transition: none !important; }
-  }
-</style>
+<title>halobar · 花再 PixelBar 歌词控制台</title>
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
 <div class="shell">
   <header class="topbar">
     <div class="brand">
-      <div class="mark" aria-hidden="true">♪</div>
+      <div class="mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <rect x="2" y="10" width="2.4" height="7" rx="1.2" fill="currentColor"/>
+          <rect x="5.4" y="6" width="2.4" height="11" rx="1.2" fill="currentColor"/>
+          <rect x="8.8" y="3" width="2.4" height="14" rx="1.2" fill="currentColor"/>
+          <rect x="12.2" y="7" width="2.4" height="10" rx="1.2" fill="currentColor"/>
+          <rect x="15.6" y="11" width="2.4" height="6" rx="1.2" fill="currentColor"/>
+        </svg>
+      </div>
       <div>
         <h1>halobar</h1>
-        <p class="sub">花再 PixelBar 歌词控制台</p>
+        <p class="sub">花再 PixelBar 歌词与像素屏控制台</p>
       </div>
     </div>
-    <div class="status">
-      <span id="state" class="chip">读取中…</span>
+    <div class="topbar-right">
+      <span id="state" class="chip">连接中…</span>
       <span id="source" class="chip">-</span>
-      <span id="ver" class="chip">v-</span>
+      <span id="health-chip" class="chip warn" hidden>SMTC 退避中</span>
+      <span id="ver" class="chip no-dot mono">v-</span>
+      <div class="seg" role="group" aria-label="外观主题" id="theme-seg">
+        <button type="button" data-theme="light" aria-pressed="false" title="浅色">浅</button>
+        <button type="button" data-theme="dark" aria-pressed="false" title="深色">深</button>
+        <button type="button" data-theme="system" aria-pressed="true" title="跟随系统">自动</button>
+      </div>
     </div>
   </header>
 
   <main class="bento">
+    <!-- Hero: Live PixelBar Mirror + Now Playing + Interactive Lyric Timeline -->
     <section class="card span-7">
-      <p class="label">正在播放</p>
-      <h2 id="track" class="track">未检测到播放</h2>
-      <p id="artist" class="artist">—</p>
-      <div class="line" id="line">—</div>
+      <div class="card-head">
+        <p class="label">正在播放</p>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button type="button" id="btn-candidates" class="sm">换词源</button>
+        </div>
+      </div>
+
+      <div class="mirror-bezel" aria-label="音箱像素屏实时镜像">
+        <canvas id="mirror-canvas" width="512" height="64"></canvas>
+        <div class="mirror-caption">
+          <span id="mirror-mode">PIXELBAR 256×32 镜像</span>
+          <span id="mirror-color" class="mono">#FFFFFF</span>
+        </div>
+      </div>
+
+      <div class="track-row">
+        <div class="track-meta">
+          <h2 id="track" class="track">未检测到播放</h2>
+          <p id="artist" class="artist">—</p>
+        </div>
+      </div>
+
+      <!-- Candidate picker drawer -->
+      <div id="candidate-panel" class="candidate-panel" hidden>
+        <div class="card-head" style="margin-bottom:4px">
+          <span class="label">选择匹配歌词（自动记住当前曲目）</span>
+          <button type="button" id="btn-close-candidates" class="sm">收起</button>
+        </div>
+        <div id="candidate-list" class="candidate-list"></div>
+      </div>
+
+      <!-- Interactive lyric timeline -->
+      <div id="timeline" class="timeline" role="listbox" aria-label="歌词时间轴，点击任意一句对齐">
+        <div class="timeline-empty" id="timeline-empty">等待歌词加载…</div>
+      </div>
+
       <div class="progress"><i id="bar"></i></div>
-      <div class="meta"><span id="pos">0:00</span><span id="dur">0:00</span></div>
-      <div class="actions">
-        <button id="btn-toggle" class="primary">暂停同步</button>
-        <button id="btn-restore">恢复屏幕</button>
-        <button id="btn-minus">−0.5s</button>
-        <button id="btn-plus">+0.5s</button>
-        <button id="btn-next">对齐下一句</button>
+      <div class="meta-row mono">
+        <span id="pos">0:00</span>
+        <span id="offset-wrap" class="offset-badge" hidden>
+          <span id="offset-val">+0.0s</span>
+          <button type="button" id="btn-reset-offset">归零</button>
+        </span>
+        <span id="dur">0:00</span>
       </div>
-      <p class="hint">微调只影响本地时钟；接入精确进度源时，偏差会在下一次采样被纠正。</p>
+
+      <div class="actions">
+        <button type="button" id="btn-toggle" class="primary">暂停同步</button>
+        <button type="button" id="btn-restore">恢复屏幕</button>
+        <button type="button" id="btn-minus" title="快捷键 [">−0.5s</button>
+        <button type="button" id="btn-plus" title="快捷键 ]">+0.5s</button>
+        <button type="button" id="btn-next">对齐下一句</button>
+      </div>
+      <p class="hint">点击歌词行可直接对齐时间；快捷键：空格暂停/恢复，<span class="mono">[</span> / <span class="mono">]</span> 微调 ±0.5s，偏移会按曲目自动记忆。</p>
     </section>
 
-    <section class="card span-5" id="env-card">
-      <p class="label">环境与插件</p>
-      <div id="env-banner" class="notice" hidden></div>
-      <dl class="kv">
-        <dt>网易云</dt><dd id="env-netease">检测中…</dd>
-        <dt>BetterNCM</dt><dd id="env-bncm">检测中…</dd>
-        <dt>精确进度</dt><dd id="env-sixk">检测中…</dd>
-        <dt>TempoHub</dt><dd id="env-tempo">检测中…</dd>
-      </dl>
-      <div class="actions">
-        <button id="btn-shortcut">创建桌面快捷方式</button>
+    <!-- Instant-apply Display & Hardware Controls -->
+    <section class="card span-5">
+      <div class="card-head">
+        <p class="label">显示与硬件控制</p>
+        <span class="hint" style="margin:0">修改即生效</span>
       </div>
-      <p class="hint" id="shortcut-hint" style="margin-top:8px"></p>
 
-      <p class="label" style="margin-top:20px">更新</p>
-      <p class="hint" id="update-line" style="margin-top:0">当前 v-</p>
-      <div class="actions">
-        <button id="btn-check-update">检查更新</button>
-        <button id="btn-update" class="primary" hidden>立即更新</button>
+      <div class="ctrl-stack">
+        <div class="ctrl-row">
+          <span class="ctrl-label">歌词语言</span>
+          <div class="seg" role="group" aria-label="歌词语言" id="lang-seg">
+            <button type="button" data-val="original" aria-pressed="true">原文</button>
+            <button type="button" data-val="translation" aria-pressed="false">翻译</button>
+            <button type="button" data-val="bilingual" aria-pressed="false">双语</button>
+          </div>
+        </div>
+
+        <div class="ctrl-row">
+          <span class="ctrl-label">长句处理</span>
+          <div class="seg" role="group" aria-label="长句处理" id="linemode-seg">
+            <button type="button" data-val="page" aria-pressed="true">分页淡入</button>
+            <button type="button" data-val="scroll" aria-pressed="false">滚动</button>
+            <button type="button" data-val="first" aria-pressed="false">首屏</button>
+          </div>
+        </div>
+
+        <div class="ctrl-row">
+          <span class="ctrl-label">对齐方式</span>
+          <div class="seg" role="group" aria-label="对齐方式" id="align-seg">
+            <button type="button" data-val="left" aria-pressed="false">左</button>
+            <button type="button" data-val="center" aria-pressed="true">中</button>
+            <button type="button" data-val="right" aria-pressed="false">右</button>
+            <button type="button" data-val="justify" aria-pressed="false">两端</button>
+          </div>
+        </div>
+
+        <div class="ctrl-row">
+          <label class="ctrl-label" for="animation">切句动画</label>
+          <select id="animation">
+            <option value="">自动 / 关闭</option>
+            <option value="0">动画 1</option>
+            <option value="1">动画 2</option>
+            <option value="2">动画 3（淡入）</option>
+            <option value="3">动画 4</option>
+            <option value="4">动画 5</option>
+          </select>
+        </div>
+
+        <div class="divider" style="margin:2px 0"></div>
+
+        <div class="ctrl-row">
+          <span class="ctrl-label">像素屏颜色</span>
+          <div class="swatches" id="color-swatches">
+            <button type="button" class="swatch" data-rgb="255,255,255" style="background:#ffffff" title="纯白"></button>
+            <button type="button" class="swatch" data-rgb="130,105,255" style="background:#8269ff" title="电光紫"></button>
+            <button type="button" class="swatch" data-rgb="56,189,248" style="background:#38bdf8" title="冰蓝"></button>
+            <button type="button" class="swatch" data-rgb="52,211,153" style="background:#34d399" title="薄荷绿"></button>
+            <button type="button" class="swatch" data-rgb="251,191,36" style="background:#fbbf24" title="暖琥珀"></button>
+            <button type="button" class="swatch" data-rgb="251,113,133" style="background:#fb7185" title="珊瑚粉"></button>
+            <label class="color-picker-wrap" title="自定义 RGB">
+              <input type="color" id="color-picker" value="#ffffff">
+            </label>
+          </div>
+        </div>
+
+        <div class="ctrl-row">
+          <label class="ctrl-label" for="standby-scene">待机场景</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="standby-scene">
+              <option value="8">声波</option>
+              <option value="0">时钟</option>
+              <option value="1">游戏</option>
+              <option value="2">工作</option>
+              <option value="3">阅读 / 自定义静图</option>
+              <option value="4">猫咪</option>
+              <option value="5">小狗</option>
+              <option value="6">梗图 / 自定义动画</option>
+              <option value="7">赛博</option>
+              <option value="">关闭待机切换</option>
+            </select>
+            <button type="button" id="btn-preview-scene" class="sm">显示</button>
+          </div>
+        </div>
+
+        <div class="ctrl-row">
+          <label class="ctrl-label" for="standby">暂停待机（秒）</label>
+          <input type="number" id="standby" class="mono" min="0" max="600" step="5" value="20">
+        </div>
       </div>
-      <div class="progress" id="update-progress" style="margin-top:10px" hidden><i id="update-bar"></i></div>
-      <details id="update-notes" hidden style="margin-top:10px">
-        <summary style="cursor:pointer;color:var(--ink-2);font-size:12px">更新说明</summary>
-        <pre id="update-notes-body" style="margin-top:8px;max-height:180px;overflow:auto;white-space:pre-wrap;font-size:12px;color:var(--ink-2);background:#f7f7fb;padding:10px;border-radius:10px"></pre>
-      </details>
     </section>
 
+    <!-- Custom Pixel Screen Studio -->
     <section class="card span-12">
-      <p class="label">自定义像素屏</p>
+      <div class="card-head">
+        <p class="label">自定义像素屏工作台</p>
+        <span class="hint" style="margin:0">支持拖拽图片或 Ctrl+V 直接粘贴</span>
+      </div>
       <div class="asset-editor">
         <div class="asset-preview-panel">
-          <div class="screen-frame">
+          <div class="screen-frame" id="asset-dropzone">
             <canvas id="asset-canvas" width="1024" height="128"></canvas>
-            <div class="screen-empty" id="asset-empty">选择一张图片开始编辑</div>
+            <div class="screen-empty" id="asset-empty">拖拽、粘贴或选择一张图片 / GIF 开始编辑</div>
           </div>
           <div class="asset-bar-wrap"><i id="asset-bar"></i></div>
-          <div class="asset-meta">
+          <div class="asset-meta mono">
             <span id="asset-info">尚未选择图片</span>
             <span id="asset-progress"></span>
           </div>
-          <p class="hint">拖动预览可平移，滚轮缩放。亮着的点就是屏幕上会亮的部分。</p>
+          <p class="hint">拖动预览可平移，滚轮缩放。256×32 单色、最多 8 帧、每帧 ≥100ms。</p>
         </div>
+
         <div class="asset-controls">
           <label class="field wide">图片 / GIF
             <input type="file" id="asset-file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif">
@@ -366,19 +222,19 @@
             </label>
             <label class="field">缩放
               <input type="range" id="asset-zoom" min="0.4" max="3.5" step="0.05" value="1">
-              <span id="asset-zoom-val">100%</span>
+              <span id="asset-zoom-val" class="mono">100%</span>
             </label>
             <label class="field">阈值
               <input type="range" id="asset-threshold" min="0" max="255" value="128">
-              <span id="asset-threshold-val">128</span>
+              <span id="asset-threshold-val" class="mono">128</span>
             </label>
             <label class="field">亮度
               <input type="range" id="asset-brightness" min="-100" max="100" value="0">
-              <span id="asset-brightness-val">0</span>
+              <span id="asset-brightness-val" class="mono">0</span>
             </label>
             <label class="field">对比度
               <input type="range" id="asset-contrast" min="0.2" max="3" step="0.05" value="1">
-              <span id="asset-contrast-val">1.0</span>
+              <span id="asset-contrast-val" class="mono">1.0</span>
             </label>
             <label class="field">反色 <input type="checkbox" id="asset-invert"></label>
             <label class="field">抖动 <input type="checkbox" id="asset-dither"></label>
@@ -386,613 +242,85 @@
             <label class="field">上传后暂停歌词 <input type="checkbox" id="asset-pause"></label>
           </div>
           <div class="actions">
-            <button id="btn-upload" class="primary">上传到音箱</button>
-            <button id="btn-showasset">立即显示</button>
-            <button id="btn-reset-view">重置视图</button>
-            <button id="btn-sample" class="ghost">载入示例图</button>
+            <button type="button" id="btn-upload" class="primary">上传到音箱</button>
+            <button type="button" id="btn-showasset">立即显示</button>
+            <button type="button" id="btn-reset-view">重置视图</button>
+            <button type="button" id="btn-sample" class="ghost">载入示例图</button>
           </div>
         </div>
       </div>
-      <p class="hint">256×32 单色、最多 8 帧、每帧 ≥100ms。GIF 预览为首帧，动画上传后在音箱上查看。上传会覆盖音箱里的自定义场景槽，官方原图需用 TempoHub / App 重新发送。</p>
     </section>
 
-    <section class="card span-6">
-      <p class="label">显示设置</p>
-      <div class="grid-2">
-        <label class="field">对齐
-          <select id="align">
-            <option value="center">居中</option>
-            <option value="left">左对齐</option>
-            <option value="right">右对齐</option>
-            <option value="justify">两端对齐</option>
-          </select>
-        </label>
-        <label class="field">歌词动画
-          <select id="animation">
-            <option value="">关闭</option>
-            <option value="0">动画 1</option>
-            <option value="1">动画 2</option>
-            <option value="2">动画 3</option>
-            <option value="3">动画 4</option>
-            <option value="4">动画 5</option>
-          </select>
-        </label>
-        <label class="field">长句处理
-          <select id="line-mode">
-            <option value="page">分页淡入</option>
-            <option value="scroll">横向滚动</option>
-            <option value="first">只显示首屏</option>
-          </select>
-        </label>
-        <label class="field">长句滚动 <input type="checkbox" id="scroll_long"></label>
-        <label class="field">暂停待机（秒） <input type="number" id="standby" min="0" max="600" step="5"></label>
-        <label class="field">启动时检查更新 <input type="checkbox" id="auto-update"></label>
-        <label class="field">更新代理
-          <select id="update-proxy">
-            <option value="auto">自动检测本机代理</option>
-            <option value="none">不使用代理</option>
-          </select>
-        </label>
+    <!-- Environment, Startup & Updates -->
+    <section class="card span-6" id="env-card">
+      <div class="card-head">
+        <p class="label">环境、系统与更新</p>
       </div>
-      <div class="actions"><button id="btn-save" class="primary">保存设置</button></div>
-      <p class="hint">分页淡入会把长句按屏幕宽度切开，切换时使用设备的淡入动画；横向滚动为设备原生跑马灯。</p>
-    </section>
-
-    <section class="card span-6">
-      <p class="label">设备</p>
+      <div id="env-banner" class="notice" hidden></div>
       <dl class="kv">
-        <dt>连接</dt><dd id="conn">-</dd>
-        <dt>固件</dt><dd id="fw">-</dd>
-        <dt>进度源</dt><dd id="src2">-</dd>
-        <dt>歌词源</dt><dd id="lsrc">-</dd>
+        <dt>网易云</dt><dd id="env-netease">检测中…</dd>
+        <dt>BetterNCM</dt><dd id="env-bncm">检测中…</dd>
+        <dt>精确进度</dt><dd id="env-sixk">检测中…</dd>
+        <dt>TempoHub</dt><dd id="env-tempo">检测中…</dd>
       </dl>
+
+      <div class="divider"></div>
+
+      <div class="ctrl-stack" style="gap:10px">
+        <div class="ctrl-row">
+          <label class="switch"><input type="checkbox" id="autostart"> 开机自动启动 halobar</label>
+          <button type="button" id="btn-shortcut" class="sm">创建桌面快捷方式</button>
+        </div>
+        <div class="ctrl-row">
+          <label class="switch"><input type="checkbox" id="auto-update"> 启动时检查更新</label>
+          <select id="update-proxy" aria-label="更新代理">
+            <option value="auto">自动检测代理</option>
+            <option value="none">直连（无代理）</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <p class="hint" id="update-line" style="margin-top:0">当前 v-</p>
+      <div class="actions" style="margin-top:10px">
+        <button type="button" id="btn-check-update" class="sm">检查更新</button>
+        <button type="button" id="btn-update" class="primary sm" hidden>立即更新</button>
+      </div>
+      <div class="progress" id="update-progress" style="margin-top:10px" hidden><i id="update-bar"></i></div>
+      <details id="update-notes" hidden style="margin-top:10px">
+        <summary style="cursor:pointer;color:var(--ink-2);font-size:12px">查看更新说明</summary>
+        <pre id="update-notes-body" style="margin-top:8px;max-height:160px;overflow:auto;white-space:pre-wrap;font-size:12px;color:var(--ink-2);background:var(--surface-2);padding:10px;border-radius:10px"></pre>
+      </details>
     </section>
 
-    <section class="card span-12">
-      <p class="label">日志</p>
+    <!-- Device Status & Logs -->
+    <section class="card span-6">
+      <div class="card-head">
+        <p class="label">设备与运行日志</p>
+        <button type="button" id="btn-diag" class="sm">诊断快照</button>
+      </div>
+      <dl class="kv">
+        <dt>设备连接</dt><dd id="conn">-</dd>
+        <dt>固件版本</dt><dd id="fw" class="mono">-</dd>
+        <dt>进度来源</dt><dd id="src2" class="mono">-</dd>
+        <dt>歌词来源</dt><dd id="lsrc" class="mono">-</dd>
+      </dl>
+
+      <div id="diag-box" class="notice mono" hidden style="margin-top:12px;margin-bottom:0;font-size:11px"></div>
+
+      <div class="divider"></div>
       <pre id="logs">加载中…</pre>
     </section>
   </main>
 
   <footer>
-    <span>halobar · 非官方工具 · 与漫步者 / 花再无关</span>
-    <span id="buildline" style="font-family:var(--mono)">dev build</span>
+    <span>halobar · 非官方桌面工具 · 与漫步者 / 花再无关</span>
+    <span id="buildline" class="mono">dev build</span>
   </footer>
 </div>
 
-<script>
-const token = document.querySelector('meta[name="halo-token"]').content;
-const api = (path, options = {}) => fetch(path, {
-  ...options,
-  headers: { 'Content-Type': 'application/json', 'X-Halo-Token': token, ...(options.headers || {}) },
-}).then(r => r.json());
-
-const fmt = (s) => {
-  if (s === null || s === undefined) return '0:00';
-  const v = Math.max(0, Math.floor(s));
-  return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
-};
-const $ = (id) => document.getElementById(id);
-
-let paused = false;
-let lastState = '';
-let lastEnv = null;
-let refreshInFlight = false;
-let logsInFlight = false;
-
-const STATE_TEXT = { idle: '空闲', following: '同步中', paused: '已暂停',
-  restored: '已恢复屏幕', 'waiting-device': '等待设备', error: '错误', connecting: '连接中' };
-
-async function refresh() {
-  if (refreshInFlight) return;
-  refreshInFlight = true;
-  try {
-    const s = await api('/api/status');
-    lastState = s.state || '';
-    $('state').textContent = STATE_TEXT[s.state] || s.state || '-';
-    $('state').className = 'chip ' + (s.connected ? (s.state === 'following' ? 'ok' : 'warn') : 'err');
-    $('source').textContent = s.source === 'none' ? '无进度源' : s.source;
-    $('source').className = 'chip ' + (s.source === '6k-labs' ? 'ok' : 'warn');
-    $('ver').textContent = 'v' + (s.version || '-');
-    const build = s.build || {};
-    $('ver').title = build.commit
-      ? `commit ${build.commit} · built ${build.built_at} · python ${build.python || '?'}`
-      : '源码运行（无 build-info）';
-    $('buildline').textContent = build.commit
-      ? `${build.commit} · ${(build.built_at || '').slice(0, 16).replace('T', ' ')}`
-      : 'source checkout';
-    renderUpdate(s);
-    $('track').textContent = s.track || '未检测到播放';
-    $('artist').textContent = s.artist || '—';
-    $('line').textContent = s.line || '—';
-    $('pos').textContent = fmt(s.position);
-    $('dur').textContent = fmt(s.duration);
-    const pct = (s.position && s.duration) ? Math.min(100, s.position / s.duration * 100) : 0;
-    $('bar').style.width = pct + '%';
-    $('conn').textContent = s.connected ? '已连接' : '未连接';
-    $('conn').className = s.connected ? 'ok' : 'bad';
-    $('fw').textContent = s.firmware || '-';
-    $('src2').textContent = s.source || '-';
-    $('lsrc').textContent = s.lyrics_source || '-';
-    const canToggle = ['following', 'paused', 'restored'].includes(s.state);
-    $('btn-toggle').disabled = !canToggle;
-    $('btn-toggle').textContent = (s.state === 'paused' || s.state === 'restored') ? '继续同步' : '暂停同步';
-    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
-      $('align').value = s.settings.align;
-      $('animation').value = s.settings.animation === null ? '' : String(s.settings.animation);
-      $('scroll_long').checked = !!s.settings.scroll_long_lines;
-      $('line-mode').value = s.settings.line_mode || 'page';
-      $('auto-update').checked = s.settings.auto_check_updates !== false;
-      $('update-proxy').value = s.settings.update_proxy || 'auto';
-      $('standby').value = s.settings.standby_after;
-    }
-    const uploadPct = Math.round((s.upload_progress || 0) * 100);
-    $('asset-bar').style.width = uploadPct + '%';
-    if (s.upload_state === 'uploading' || s.upload_state === 'queued') {
-      $('asset-progress').textContent = '上传中 ' + uploadPct + '%';
-    } else if (s.upload_state === 'error') {
-      $('asset-progress').textContent = '上传失败：' + (s.last_error || '');
-    } else if (s.upload_state === 'done' && s.asset_name) {
-      $('asset-info').textContent = `${s.asset_name} · ${s.asset_frames} 帧 · 场景 ${s.asset_category}/${s.asset_option}`;
-      $('asset-progress').textContent = '上传完成';
-    }
-    renderEnvironment(s.environment);
-  } catch (e) {
-    $('state').textContent = '控制台连接失败';
-    $('state').className = 'chip err';
-  } finally {
-    refreshInFlight = false;
-  }
-}
-
-async function command(action, value) {
-  await api('/api/command', { method: 'POST', body: JSON.stringify({ action, value }) });
-  refresh();
-}
-
-async function saveSettings() {
-  const animation = $('animation').value;
-  await api('/api/settings', {
-    method: 'POST',
-    body: JSON.stringify({
-      align: $('align').value,
-      animation: animation === '' ? null : Number(animation),
-      scroll_long_lines: $('scroll_long').checked,
-      line_mode: $('line-mode').value,
-      auto_check_updates: $('auto-update').checked,
-      update_proxy: $('update-proxy').value,
-      standby_after: Number($('standby').value),
-    }),
-  });
-  refresh();
-}
-
-async function refreshLogs() {
-  if (logsInFlight) return;
-  logsInFlight = true;
-  try {
-    const data = await api('/api/logs');
-    $('logs').textContent = (data.lines || []).slice(-120).join('\n') || '（暂无日志）';
-    $('logs').scrollTop = $('logs').scrollHeight;
-  } catch (e) { /* ignore */ } finally {
-    logsInFlight = false;
-  }
-}
-
-// ---------------------------------------------------------------- 环境与插件
-function renderEnvironment(env) {
-  if (!env || !env.links) return;
-  lastEnv = env;
-  const links = env.links;
-  $('env-netease').innerHTML = env.netease_exe
-    ? `<span class="ok">已检测</span> <span style="color:var(--ink-faint)">${env.netease_path}</span>`
-    : `<span class="bad">未检测到官网版</span> · <a class="link" href="${links.netease}" target="_blank">下载</a>`;
-  $('env-bncm').innerHTML = env.betterncm
-    ? '<span class="ok">已安装</span>'
-    : `<span class="no">未安装</span> · <a class="link" href="${links.betterncm}" target="_blank">BetterNCM</a> → <a class="link" href="${links.inflink}" target="_blank">InfLink-rs</a> → <a class="link" href="${links.sixk}" target="_blank">6K Labs</a>`;
-  $('env-sixk').innerHTML = env.sixk
-    ? '<span class="ok">在线（真实进度）</span>'
-    : (env.betterncm
-        ? `<span class="no">未连接（网易云没开，或插件未加载）</span> · <a class="link" href="${links.sixk}" target="_blank">检查安装</a>`
-        : `<span class="no">未安装（当前为估算进度）</span> · <a class="link" href="${links.sixk}" target="_blank">安装 6K Labs</a>`);
-  $('env-tempo').innerHTML = env.tempo_hub
-    ? '<span class="no">正在运行，可能抢设备，建议退出</span>'
-    : '<span class="ok">未运行</span>';
-
-  const banner = $('env-banner');
-  if (!env.sixk) {
-    banner.hidden = false;
-    banner.innerHTML =
-      '<b>想让「拖动进度条也不漂」吗？</b>给官网版网易云装上插件链（约 5 分钟）：' +
-      `<ol>
-         <li>确认用的是 <a class="link" href="${links.netease}" target="_blank">官网安装版</a>（Store 版无法注入）</li>
-         <li>安装 <a class="link" href="${links.betterncm}" target="_blank">BetterNCM</a>（选择网易云安装目录）</li>
-         <li>把 <a class="link" href="${links.inflink}" target="_blank">InfLink-rs</a> 的 .plugin 放进插件目录</li>
-         <li>把 <a class="link" href="${links.sixk}" target="_blank">6K Labs</a> 装进插件目录，重启网易云</li>
-       </ol>装好后本页会自动显示「在线（真实进度）」，无需重启本程序。`;
-  } else {
-    banner.hidden = true;
-  }
-}
-
-$('btn-toggle').onclick = () => command(lastState === 'paused' || lastState === 'restored' ? 'resume' : 'pause');
-$('btn-restore').onclick = () => command('restore');
-$('btn-minus').onclick = () => command('nudge', -0.5);
-$('btn-plus').onclick = () => command('nudge', 0.5);
-$('btn-next').onclick = () => command('next_line');
-$('btn-save').onclick = saveSettings;
-
-$('btn-shortcut').onclick = async () => {
-  const result = await api('/api/shortcut', { method: 'POST', body: '{}' });
-  $('shortcut-hint').textContent = result.error ? '创建失败：' + result.error : '已创建：' + result.path;
-};
-
-// ---------------------------------------------------------------- 更新
-function renderUpdate(s) {
-  const state = s.update_state || 'idle';
-  const version = s.update_version || '';
-  const progress = Math.round((s.update_progress || 0) * 100);
-  const current = 'v' + (s.version || '-');
-  const line = $('update-line');
-  const button = $('btn-update');
-  const bar = $('update-progress');
-  const notes = $('update-notes');
-
-  if (state === 'available' || state === 'downloading' || state === 'ready' || state === 'applying') {
-    line.innerHTML = `当前 ${current} · 发现新版本 <b style="color:var(--accent)">v${version}</b>` +
-      (s.update_url ? ` · <a class="link" href="${s.update_url}" target="_blank">查看</a>` : '');
-    notes.hidden = false;
-    $('update-notes-body').textContent = s.update_notes || '（这个版本没有附更新说明）';
-    button.hidden = state === 'applying';
-    button.textContent = state === 'downloading' ? `下载中 ${progress}%` : (state === 'ready' ? '重启并安装' : '立即更新');
-    button.disabled = state === 'downloading';
-    bar.hidden = state !== 'downloading';
-    $('update-bar').style.width = progress + '%';
-  } else if (state === 'checking') {
-    line.textContent = `当前 ${current} · 正在检查…`;
-    button.hidden = true;
-    bar.hidden = true;
-  } else if (state === 'none') {
-    line.textContent = `当前 ${current} · 已是最新版本`;
-    button.hidden = true;
-    bar.hidden = true;
-    notes.hidden = true;
-  } else if (state === 'error') {
-    line.innerHTML = `当前 ${current} · 检查失败：${s.update_error || '未知错误'}` +
-      ' · <a class="link" href="https://github.com/zhuiye8/halo-tools/releases/latest" target="_blank">手动下载</a>';
-    button.hidden = true;
-    bar.hidden = true;
-  } else {
-    line.textContent = `当前 ${current}`;
-    button.hidden = true;
-    bar.hidden = true;
-  }
-}
-
-$('btn-check-update').onclick = async () => {
-  $('update-line').textContent = '正在检查…';
-  await api('/api/update/check', { method: 'POST', body: '{}' });
-  setTimeout(refresh, 1500);
-};
-
-$('btn-update').onclick = async () => {
-  if (!confirm('将下载新版本、自动替换程序文件并重启。继续吗？')) return;
-  await api('/api/update/apply', { method: 'POST', body: '{}' });
-  $('update-line').textContent = '正在下载更新…';
-  setTimeout(refresh, 800);
-};
-
-// ---------------------------------------------------------------- 素材工作台
-// 在浏览器里复刻服务端的处理流程（适配 → 缩放/平移 → 亮度/对比度 → 反色 → 抖动），
-// 所以调整参数时预览是即时的，上传只是把同一组参数交给服务端重算一遍。
-const SCREEN_W = 256, SCREEN_H = 32;
-let lastAsset = null;
-let sourceImage = null;
-let view = { zoom: 1, offsetX: 0, offsetY: 0, dragging: false, startX: 0, startY: 0 };
-
-const fittedCanvas = document.createElement('canvas');
-fittedCanvas.width = SCREEN_W;
-fittedCanvas.height = SCREEN_H;
-const finalCanvas = document.createElement('canvas');
-finalCanvas.width = SCREEN_W;
-finalCanvas.height = SCREEN_H;
-const tmpCanvas = document.createElement('canvas');
-tmpCanvas.width = SCREEN_W;
-tmpCanvas.height = SCREEN_H;
-const tmpOutCanvas = document.createElement('canvas');
-tmpOutCanvas.width = SCREEN_W;
-tmpOutCanvas.height = SCREEN_H;
-
-function setSourceImage(bitmap) {
-  if (sourceImage && typeof sourceImage.close === 'function') {
-    sourceImage.close();
-  }
-  sourceImage = bitmap;
-}
-
-function currentOptions() {
-  return {
-    fit: $('asset-fit').value,
-    zoom: Number($('asset-zoom').value),
-    offset_x: view.offsetX,
-    offset_y: view.offsetY,
-    threshold: Number($('asset-threshold').value),
-    brightness: Number($('asset-brightness').value),
-    contrast: Number($('asset-contrast').value),
-    invert: $('asset-invert').checked,
-    dither: $('asset-dither').checked,
-  };
-}
-
-function fitSource(image) {
-  const fctx = fittedCanvas.getContext('2d', { willReadFrequently: true });
-  fctx.fillStyle = '#000';
-  fctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
-  const fit = $('asset-fit').value;
-  let w, h;
-  if (fit === 'cover') {
-    const scale = Math.max(SCREEN_W / image.width, SCREEN_H / image.height);
-    w = image.width * scale; h = image.height * scale;
-  } else if (fit === 'stretch') {
-    w = SCREEN_W; h = SCREEN_H;
-  } else {
-    const scale = Math.min(SCREEN_W / image.width, SCREEN_H / image.height);
-    w = image.width * scale; h = image.height * scale;
-  }
-  fctx.imageSmoothingEnabled = true;
-  fctx.drawImage(image, (SCREEN_W - w) / 2, (SCREEN_H - h) / 2, w, h);
-  return fctx.getImageData(0, 0, SCREEN_W, SCREEN_H);
-}
-
-function renderPreview() {
-  if (!sourceImage) return;
-  const opts = currentOptions();
-  const base = fitSource(sourceImage);
-
-  const zoom = opts.zoom;
-  const drawW = SCREEN_W * zoom, drawH = SCREEN_H * zoom;
-  const x = (SCREEN_W - drawW) / 2 + opts.offset_x * SCREEN_W;
-  const y = (SCREEN_H - drawH) / 2 + opts.offset_y * SCREEN_H;
-
-  const fctx = finalCanvas.getContext('2d', { willReadFrequently: true });
-  // 先把 base 画到复用的临时画布，再按缩放/位移重采样
-  tmpCanvas.getContext('2d').putImageData(base, 0, 0);
-
-  fctx.fillStyle = '#000';
-  fctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
-  fctx.imageSmoothingEnabled = true;
-  fctx.drawImage(tmpCanvas, x, y, drawW, drawH);
-  const image = fctx.getImageData(0, 0, SCREEN_W, SCREEN_H);
-
-  const gray = new Float32Array(SCREEN_W * SCREEN_H);
-  for (let i = 0; i < gray.length; i++) {
-    const p = i * 4;
-    gray[i] = 0.299 * image.data[p] + 0.587 * image.data[p + 1] + 0.114 * image.data[p + 2];
-  }
-  for (let i = 0; i < gray.length; i++) {
-    let v = (gray[i] - 128) * opts.contrast + 128 + opts.brightness;
-    if (opts.invert) v = 255 - v;
-    gray[i] = Math.max(0, Math.min(255, v));
-  }
-  const out = new Uint8ClampedArray(SCREEN_W * SCREEN_H * 4);
-  if (opts.dither) {
-    floydSteinberg(gray, opts.threshold);
-  }
-  for (let i = 0; i < gray.length; i++) {
-    const on = opts.dither ? gray[i] >= 128 : gray[i] >= opts.threshold;
-    const p = i * 4;
-    out[p] = out[p + 1] = out[p + 2] = on ? 255 : 0;
-    out[p + 3] = 255;
-  }
-  const outImage = new ImageData(out, SCREEN_W, SCREEN_H);
-  const viewCanvas = $('asset-canvas');
-  const vctx = viewCanvas.getContext('2d');
-  vctx.imageSmoothingEnabled = false;
-  tmpOutCanvas.getContext('2d').putImageData(outImage, 0, 0);
-  vctx.drawImage(tmpOutCanvas, 0, 0, viewCanvas.width, viewCanvas.height);
-  $('asset-empty').style.display = 'none';
-}
-
-function floydSteinberg(values, threshold) {
-  const w = SCREEN_W, h = SCREEN_H;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      const old = values[i];
-      const nw = old >= threshold ? 255 : 0;
-      const err = old - nw;
-      values[i] = nw;
-      if (x + 1 < w) values[i + 1] += err * 7 / 16;
-      if (y + 1 < h) {
-        if (x > 0) values[i + w - 1] += err * 3 / 16;
-        values[i + w] += err * 5 / 16;
-        if (x + 1 < w) values[i + w + 1] += err / 16;
-      }
-    }
-  }
-}
-
-function resetView() {
-  view.zoom = 1; view.offsetX = 0; view.offsetY = 0;
-  $('asset-zoom').value = 1;
-  $('asset-zoom-val').textContent = '100%';
-  renderPreview();
-}
-
-$('asset-file').onchange = async () => {
-  const file = $('asset-file').files[0];
-  if (!file) return;
-  try {
-    setSourceImage(await createImageBitmap(file));
-  } catch (e) {
-    $('asset-info').textContent = '无法读取这张图片';
-    return;
-  }
-  $('asset-info').textContent = `${file.name} · ${sourceImage.width}×${sourceImage.height}`;
-  $('asset-progress').textContent = '';
-  resetView();
-};
-
-['asset-fit', 'asset-threshold', 'asset-brightness', 'asset-contrast', 'asset-invert', 'asset-dither']
-  .forEach((id) => {
-    const el = $(id);
-    el.addEventListener('input', () => {
-      if (id === 'asset-threshold') $('asset-threshold-val').textContent = el.value;
-      if (id === 'asset-brightness') $('asset-brightness-val').textContent = el.value;
-      if (id === 'asset-contrast') $('asset-contrast-val').textContent = Number(el.value).toFixed(1);
-      renderPreview();
-    });
-    el.addEventListener('change', renderPreview);
-  });
-
-$('asset-zoom').addEventListener('input', () => {
-  view.zoom = Number($('asset-zoom').value);
-  $('asset-zoom-val').textContent = Math.round(view.zoom * 100) + '%';
-  renderPreview();
-});
-
-const viewCanvasEl = $('asset-canvas');
-viewCanvasEl.addEventListener('pointerdown', (e) => {
-  if (!sourceImage) return;
-  view.dragging = true;
-  view.startX = e.clientX; view.startY = e.clientY;
-  viewCanvasEl.classList.add('dragging');
-  viewCanvasEl.setPointerCapture(e.pointerId);
-});
-viewCanvasEl.addEventListener('pointermove', (e) => {
-  if (!view.dragging) return;
-  const rect = viewCanvasEl.getBoundingClientRect();
-  view.offsetX += (e.clientX - view.startX) / rect.width;
-  view.offsetY += (e.clientY - view.startY) / rect.height;
-  view.offsetX = Math.max(-1, Math.min(1, view.offsetX));
-  view.offsetY = Math.max(-1, Math.min(1, view.offsetY));
-  view.startX = e.clientX; view.startY = e.clientY;
-  renderPreview();
-});
-viewCanvasEl.addEventListener('pointerup', (e) => {
-  view.dragging = false;
-  viewCanvasEl.classList.remove('dragging');
-  viewCanvasEl.releasePointerCapture(e.pointerId);
-});
-viewCanvasEl.addEventListener('wheel', (e) => {
-  if (!sourceImage) return;
-  e.preventDefault();
-  view.zoom = Math.max(0.4, Math.min(3.5, view.zoom + (e.deltaY < 0 ? 0.1 : -0.1)));
-  $('asset-zoom').value = view.zoom;
-  $('asset-zoom-val').textContent = Math.round(view.zoom * 100) + '%';
-  renderPreview();
-}, { passive: false });
-
-$('btn-reset-view').onclick = resetView;
-
-// A built-in sample so the editor can be tried (and demoed) without a file.
-function loadSample() {
-  const c = document.createElement('canvas');
-  c.width = 256; c.height = 32;          // 1:1 with the device screen
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, 256, 32);
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(0.5, 0.5, 255, 31);
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 22px "Microsoft YaHei UI", sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('HALO', 128, 16);
-  ctx.font = '10px "Microsoft YaHei UI", sans-serif';
-  ctx.fillText('♪', 14, 10);
-  ctx.fillText('♪', 242, 22);
-  createImageBitmap(c).then((bitmap) => {
-    setSourceImage(bitmap);
-    $('asset-info').textContent = '示例图 · 256×32';
-    $('asset-progress').textContent = '';
-    resetView();
-  });
-}
-
-$('btn-sample').onclick = loadSample;
-if (location.hash === '#demo') loadSample();
-
-$('btn-upload').onclick = async () => {
-  const file = $('asset-file').files[0];
-  if (!file) { alert('先选择一张图片或 GIF'); return; }
-  const buffer = await file.arrayBuffer();
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  }
-  const opts = currentOptions();
-  $('btn-upload').disabled = true;
-  $('asset-progress').textContent = '处理中…';
-  try {
-    const result = await api('/api/asset/upload', {
-      method: 'POST',
-      body: JSON.stringify({
-        filename: file.name,
-        data: btoa(binary),
-        fit: opts.fit,
-        threshold: opts.threshold,
-        invert: opts.invert,
-        dither: opts.dither,
-        zoom: opts.zoom,
-        offset_x: opts.offset_x,
-        offset_y: opts.offset_y,
-        brightness: opts.brightness,
-        contrast: opts.contrast,
-        as_standby: $('asset-standby').checked,
-        pause_after: $('asset-pause').checked,
-      }),
-    });
-    if (result.error) {
-      $('asset-progress').textContent = '失败：' + result.error;
-    } else {
-      lastAsset = result;
-      $('asset-info').textContent = `${file.name} · ${result.frames} 帧 · ${(result.bytes / 1024).toFixed(1)} KB`;
-      $('asset-progress').textContent = result.animated ? '已提交（动画）' : '已提交';
-    }
-  } catch (e) {
-    $('asset-progress').textContent = '上传请求失败';
-  } finally {
-    $('btn-upload').disabled = false;
-    refresh();
-  }
-};
-
-$('btn-showasset').onclick = async () => {
-  const body = lastAsset ? { category: lastAsset.category, option: lastAsset.option } : {};
-  const result = await api('/api/asset/display', { method: 'POST', body: JSON.stringify(body) });
-  if (result.error) alert(result.error);
-  refresh();
-};
-
-let statusTimer = null;
-let logsTimer = null;
-
-function startPolling() {
-  if (!statusTimer) statusTimer = setInterval(refresh, 700);
-  if (!logsTimer) logsTimer = setInterval(refreshLogs, 2500);
-}
-
-function stopPolling() {
-  if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
-  if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
-}
-
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    stopPolling();
-  } else {
-    refresh();
-    refreshLogs();
-    startPolling();
-  }
-});
-
-refresh();
-refreshLogs();
-if (!document.hidden) startPolling();
-</script>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/app.js"></script>
 </body>
 </html>

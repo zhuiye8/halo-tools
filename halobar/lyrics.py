@@ -203,6 +203,7 @@ class NeteaseClient:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.timeout = timeout
+        self._search_cache: dict[tuple[str, str], list[SongMatch]] = {}
 
     # ------------------------------------------------------------------ search
     def search(self, title: str, artist: str = "", limit: int = 8) -> list[SongMatch]:
@@ -220,17 +221,38 @@ class NeteaseClient:
         log.debug("search %r -> %d candidates", query, len(matches))
         return matches
 
+    def search_candidates(self, title: str, artist: str = "", duration: float = 0.0,
+                          limit: int = 8) -> list[SongMatch]:
+        """Return scored & sorted song candidates (cached per title/artist)."""
+        key = (_clean(title).lower(), _clean(artist).lower())
+        cached = self._search_cache.get(key)
+        if cached is None:
+            cached = self.search(title, artist, limit=limit)
+            if len(self._search_cache) >= 64:
+                self._search_cache.pop(next(iter(self._search_cache)))
+            self._search_cache[key] = cached
+        scored: list[SongMatch] = []
+        for item in cached:
+            score = score_candidate(item, title, artist, duration)
+            scored.append(SongMatch(
+                song_id=item.song_id, title=item.title, artist=item.artist,
+                duration_ms=item.duration_ms, score=score))
+        scored.sort(key=lambda item: item.score, reverse=True)
+        return scored
+
     def best_match(self, title: str, artist: str, duration: float = 0.0) -> SongMatch | None:
-        candidates = self.search(title, artist)
+        candidates = self.search_candidates(title, artist, duration)
         if not candidates:
             return None
-        for candidate in candidates:
-            candidate.score = score_candidate(candidate, title, artist, duration)
-        candidates.sort(key=lambda item: item.score, reverse=True)
         best = candidates[0]
         log.info("lyric match: %r/%r score=%.2f (id=%d)", best.title, best.artist,
                  best.score, best.song_id)
         return best if best.score >= 0.6 else None
+
+    def fetch_by_id(self, song_id: int, title: str = "", artist: str = "",
+                    duration: float = 0.0) -> Lyrics:
+        """Fetch lyrics for an explicit NetEase song id (user-selected candidate)."""
+        return self.fetch(SongMatch(int(song_id), title, artist, int(duration * 1000)))
 
     # ------------------------------------------------------------------- lyric
     def fetch(self, match: SongMatch) -> Lyrics:

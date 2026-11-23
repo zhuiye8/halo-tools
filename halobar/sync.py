@@ -160,6 +160,7 @@ class EngineConfig:
     align: Align = Align.CENTER
     scroll: Scroll | None = None
     animation: int | None = None
+    color: tuple[int, int, int] | None = None
     standby_scene: int | None = 8          # built-in "waves" scene; None disables
     standby_scene_option: int = 0          # option/template id inside that scene
     standby_after: float = 20.0            # seconds of pause before standby
@@ -168,6 +169,7 @@ class EngineConfig:
     scroll_long_lines: bool = True         # keep for compatibility; see line_mode
     scroll_threshold_units: int = 32       # half-width cells; CJK counts as 2
     line_mode: str = "page"                # page | scroll | first
+    lyric_lang: str = "original"           # original | translation | bilingual
     page_units: int = 32                   # characters per page (half-width cells)
     scroll_lead_spaces: int = 2            # delay before the first character scrolls in
     segment_fade: bool = True              # fade between pages of a long line
@@ -184,21 +186,45 @@ class LyricsEngine:
         self.clock = ProgressClock()
         self.lyrics: Lyrics = Lyrics()
         self._current_line: LyricLine | None = None
+        self._current_line_index: int = -1
         self._current_chunk: str | None = None
         self._current_scroll: Scroll | None = None
+        self._display_mode: str = "idle"    # idle | text | cleared | scene | standby
+        self._display_scene: int | None = None
         self._paused_since: float | None = None
         self._in_standby = False
         self._interlude_state = "none"      # none | cleared | scene
         self._snapshot = None
         self._track_key = ""
 
+    @property
+    def current_chunk(self) -> str:
+        return self._current_chunk or ""
+
+    @property
+    def current_line_index(self) -> int:
+        return self._current_line_index
+
+    @property
+    def display_mode(self) -> str:
+        return self._display_mode
+
+    @property
+    def display_scene(self) -> int | None:
+        return self._display_scene
+
     # ------------------------------------------------------------- lyric lookup
     def set_lyrics(self, lyrics: Lyrics) -> None:
         self.lyrics = lyrics.with_ends()
         self._current_line = None
+        self._current_line_index = -1
         self._current_chunk = None
         self._current_scroll = None
         self._interlude_state = "none"
+
+    def force_redraw(self) -> None:
+        self._current_chunk = None
+        self._current_scroll = None
 
     # ------------------------------------------------------------------ paging
     def _pages(self, text: str) -> list[str]:
@@ -240,38 +266,58 @@ class LyricsEngine:
                 return index
         return len(pages) - 1
 
+    def _resolve_line_text(self, line: LyricLine, position: float) -> tuple[str, bool]:
+        """Select text according to ``lyric_lang``; returns ``(text, switched_lang)``."""
+        lang = self.config.lyric_lang
+        has_trans = bool(line.translation and line.translation.strip()
+                         and line.translation.strip() != line.text.strip())
+        if lang == "translation" and has_trans:
+            return line.translation, False
+        if lang == "bilingual" and has_trans:
+            span = max(0.001, line.end - line.start)
+            fraction = min(max((position - line.start) / span, 0.0), 0.999999)
+            if fraction >= 0.55:
+                return line.translation, True
+            return line.text, True
+        return line.text, False
+
     def _render(self, line: LyricLine, position: float) -> None:
-        pages = self._pages(line.text)
+        active_text, bilingual_split = self._resolve_line_text(line, position)
+        pages = self._pages(active_text)
         mode = self.config.line_mode
         scroll = self.config.scroll
         animation = self.config.animation
         index = 0
 
         hardware_scroll = (
-            mode == "scroll" and len(line.text.encode("utf-8")) <= protocol.MAX_TEXT_BYTES
+            mode == "scroll" and len(active_text.encode("utf-8")) <= protocol.MAX_TEXT_BYTES
         )
         if hardware_scroll:
             # Lead-in spaces delay the first character; the firmware then scrolls at
             # its own pace, so this stays an opt-in mode.
-            chunk = " " * max(0, self.config.scroll_lead_spaces) + line.text
+            chunk = " " * max(0, self.config.scroll_lead_spaces) + active_text
             scroll = Scroll.RIGHT_TO_LEFT
             animation = None
         else:
             index = 0 if mode == "first" else self._page_at(line, position, pages)
             chunk = pages[index]
-            if animation is None and self.config.segment_fade and len(pages) > 1:
+            if animation is None and self.config.segment_fade and (len(pages) > 1 or bilingual_split):
                 animation = 2
 
         if chunk == self._current_chunk and scroll == self._current_scroll:
             return
         self._current_chunk = chunk
         self._current_scroll = scroll
-        self.screen.show_text(
-            chunk,
-            align=self.config.align if scroll is None else None,
-            scroll=scroll,
-            animation=animation if scroll is None else None,
-        )
+        self._display_mode = "text"
+        self._display_scene = None
+        kwargs: dict[str, object] = {
+            "align": self.config.align if scroll is None else None,
+            "scroll": scroll,
+            "animation": animation if scroll is None else None,
+        }
+        if self.config.color is not None:
+            kwargs["color"] = self.config.color
+        self.screen.show_text(chunk, **kwargs)
         log.info("line %.1fs page %d/%d%s%s: %s", line.start, index + 1, len(pages),
                  " scroll" if scroll else "",
                  " fade" if animation == 2 and self.config.animation is None else "",
@@ -298,16 +344,22 @@ class LyricsEngine:
                 if self.config.standby_scene is not None:
                     try:
                         self.screen.show_scene(self.config.standby_scene, option=self.config.standby_scene_option)
+                        self._display_mode = "scene"
+                        self._display_scene = self.config.standby_scene
                         log.info("interlude %.0fs -> scene %d", gap, self.config.standby_scene)
                     except RenderError as exc:
                         log.warning("interlude scene failed: %s", exc)
                 else:
                     self.screen.show_text("", align=self.config.align)
+                    self._display_mode = "cleared"
+                    self._display_scene = None
         elif gap >= self.config.interlude_clear_after:
             if self._interlude_state != "cleared":
                 self._interlude_state = "cleared"
                 self._current_chunk = ""
                 self._current_scroll = None
+                self._display_mode = "cleared"
+                self._display_scene = None
                 self.screen.show_text("", align=self.config.align)
                 log.info("interlude %.0fs -> cleared", gap)
 
@@ -315,6 +367,9 @@ class LyricsEngine:
         if self._in_standby:
             return
         self._in_standby = True
+        self._current_chunk = ""
+        self._display_mode = "standby"
+        self._display_scene = self.config.standby_scene
         if self.config.standby_scene is not None:
             try:
                 self.screen.show_scene(self.config.standby_scene, option=self.config.standby_scene_option)
@@ -340,6 +395,7 @@ class LyricsEngine:
         if playback.track_key != self._track_key:
             self._track_key = playback.track_key
             self._current_line = None
+            self._current_line_index = -1
             self._current_chunk = None
             self._current_scroll = None
             self._interlude_state = "none"
@@ -357,12 +413,22 @@ class LyricsEngine:
 
         if not self.lyrics:
             return
-        line = self.lyrics.line_at(position)
+        line_idx = -1
+        line: LyricLine | None = None
+        for idx, candidate in enumerate(self.lyrics.lines):
+            if candidate.start <= position:
+                line_idx = idx
+                line = candidate
+            else:
+                break
         if line is not None and position < line.end:
             self._leave_interlude()
             self._current_line = line
+            self._current_line_index = line_idx
             self._render(line, position)
         else:
+            self._current_line = None
+            self._current_line_index = -1
             self._handle_interlude(position)
 
     # ---------------------------------------------------------------------- run
