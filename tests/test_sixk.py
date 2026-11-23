@@ -82,3 +82,61 @@ def test_fetch_parses_json(monkeypatch):
     playback = sixk.read_playback()
     assert playback is not None
     assert playback.position == 128.4
+
+
+def test_sixk_client_keepalive_and_offline_backoff():
+    now = {"t": 10.0}
+    created = {"n": 0}
+    fail = {"on": False}
+
+    class FakeResp:
+        status = 200
+
+        def read(self):
+            return json.dumps(SAMPLE).encode()
+
+    class FakeConn:
+        def __init__(self, host, port, timeout=0.6):
+            created["n"] += 1
+            self.timeout = timeout
+            self.closed = False
+
+        def request(self, method, path, headers=None):
+            if fail["on"]:
+                raise OSError("connection refused")
+
+        def getresponse(self):
+            return FakeResp()
+
+        def close(self):
+            self.closed = True
+
+    client = sixk.SixKClient(
+        backoff_schedule=(2.0, 5.0),
+        clock=lambda: now["t"],
+        connection_factory=FakeConn,
+    )
+    online, pb1 = client.read()
+    assert online is True and pb1 is not None and pb1.title == "如愿"
+    online, pb2 = client.read()
+    assert online is True and pb2 is not None
+    assert created["n"] == 1  # Keep-Alive socket reused
+
+    # Going offline triggers exponential backoff without hitting socket again.
+    fail["on"] = True
+    online, pb3 = client.read()
+    assert online is False and pb3 is None
+    reads_after_fail = client.reads
+
+    now["t"] += 1.0
+    online, pb4 = client.read()
+    assert online is False and pb4 is None
+    assert client.reads == reads_after_fail
+    assert client.skips == 1
+
+    # After 2.0s backoff expires, probes again and recovers when server returns.
+    fail["on"] = False
+    now["t"] += 1.5
+    online, pb5 = client.read()
+    assert online is True and pb5 is not None
+    client.close()

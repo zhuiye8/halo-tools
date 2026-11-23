@@ -6,11 +6,15 @@ writer for the HID device at any time.
 
 Design notes
 ------------
-* One worker thread runs its own asyncio loop: playback polling (6K Labs / SMTC)
-  is async, lyric fetching is blocking and runs in an executor.
+* One worker thread runs its own asyncio loop: the render/sync engine advances
+  every ``poll_seconds`` (100 ms) using monotonic clock interpolation, while
+  playback source reads are decoupled to ``media_poll_seconds`` (default 0.5 s)
+  or woken early by WinRT SMTC change events.
+* Non-device errors (media read or lyric fetch failures) never disconnect the
+  HID screen or overwrite the initial display snapshot.
 * The service keeps a :class:`ServiceStatus` snapshot that any thread may read.
-* Lyrics are fetched through an injected callable so tests run fully offline.
-* On stop, the display snapshot taken at start is restored.
+* On stop, the display snapshot taken at start is restored and all media/update
+  resources are released cleanly.
 """
 
 from __future__ import annotations
@@ -25,8 +29,8 @@ from typing import Callable, Protocol
 
 from .device.screen import Align, DisplaySnapshot, RenderError, Screen, Scroll
 from .lyrics import Lyrics, NeteaseClient
-from .media import Playback, read_playback
-from .sync import EngineConfig, LyricsEngine, segment_text
+from .media import Playback, PlaybackReader
+from .sync import EngineConfig, LyricsEngine
 
 log = logging.getLogger(__name__)
 
@@ -89,7 +93,8 @@ class ServiceConfig:
     standby_scene: int | None = 8
     standby_after: float = 20.0
     poll_seconds: float = 0.1
-    lyric_poll_seconds: float = 1.0
+    media_poll_seconds: float = 0.5
+    lyric_poll_seconds: float = 1.0     # kept for backwards compatibility
     reconnect_seconds: float = 3.0
     scroll_long_lines: bool = True
     scroll_threshold_units: int = 32
@@ -112,14 +117,22 @@ class LyricsService:
         config: ServiceConfig | None = None,
         *,
         screen_factory: ScreenFactory | None = None,
-        reader: Callable[..., object] = read_playback,
+        reader: Callable[..., object] | None = None,
         lyrics_client: NeteaseClient | None = None,
     ) -> None:
         self.config = config or ServiceConfig()
         self._screen_factory = screen_factory or (lambda: Screen())
-        self._reader = reader
-        self._lyrics_client = lyrics_client or NeteaseClient(
-            path_for_cache())
+        self._custom_reader = reader
+        self._playback_reader: PlaybackReader | None = None
+        if reader is None:
+            self._playback_reader = PlaybackReader(
+                sixk_interval=min(0.35, max(0.1, self.config.media_poll_seconds)),
+                smtc_interval=max(0.2, self.config.media_poll_seconds),
+            )
+            self._reader: Callable[..., object] = self._playback_reader.read
+        else:
+            self._reader = reader
+        self._lyrics_client = lyrics_client or NeteaseClient(path_for_cache())
         self._thread: threading.Thread | None = None
         self._lock = threading.RLock()
         self._stop = threading.Event()
@@ -140,21 +153,32 @@ class LyricsService:
         self._update_apply_requested = threading.Event()
         self._release = None
 
+        # Decoupled media polling cache.
+        self._cached_playback: Playback | None = None
+        self._next_media_poll: float = 0.0
+        self._last_media_warn_at: float = 0.0
+
     # ------------------------------------------------------------------ control
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
+        self._next_media_poll = 0.0
         self._thread = threading.Thread(target=self._run, name="halobar-service", daemon=True)
         self._thread.start()
-        self._update_thread = threading.Thread(target=self._update_worker,
-                                               name="halobar-updates", daemon=True)
+        self._update_thread = threading.Thread(
+            target=self._update_worker, name="halobar-updates", daemon=True
+        )
         self._update_thread.start()
 
     def stop(self, timeout: float = 5.0) -> None:
         self._stop.set()
         if self._thread:
             self._thread.join(timeout)
+        if self._update_thread:
+            self._update_thread.join(min(2.0, timeout))
+        if self._playback_reader is not None:
+            self._playback_reader.close()
 
     def pause(self) -> None:
         self._paused.set()
@@ -163,6 +187,7 @@ class LyricsService:
     def resume(self) -> None:
         self._suspended.clear()
         self._paused.clear()
+        self._next_media_poll = 0.0
         self._set_status(state="following")
 
     def nudge(self, seconds: float) -> None:
@@ -172,6 +197,11 @@ class LyricsService:
     def nudge_to_next_line(self) -> None:
         """Jump the clock forward so the next lyric line starts now."""
         self._next_line_requested = True
+
+    def media_diagnostics(self) -> dict[str, object]:
+        if self._playback_reader is None:
+            return {"mode": "custom-reader"}
+        return self._playback_reader.diagnostics()
 
     # ------------------------------------------------------------------- assets
     def submit_upload(self, job: UploadJob) -> None:
@@ -190,8 +220,12 @@ class LyricsService:
         screen = self._screen
         if screen is None:
             raise RenderError("device is not connected")
-        screen.upload_bitmap(job.data, category=job.category, option=job.option,
-                             progress=lambda value: self._set_status(upload_progress=value))
+        screen.upload_bitmap(
+            job.data,
+            category=job.category,
+            option=job.option,
+            progress=lambda value: self._set_status(upload_progress=value),
+        )
         if job.as_standby:
             self.config.standby_scene = job.category
             self.config.standby_scene_option = job.option
@@ -219,7 +253,8 @@ class LyricsService:
     def _update_worker(self) -> None:
         from . import update as update_module
 
-        time.sleep(4)
+        if self._stop.wait(4.0):
+            return
         while not self._stop.is_set():
             try:
                 if self.config.auto_check_updates or self._update_check_requested.is_set():
@@ -236,7 +271,8 @@ class LyricsService:
                 if (self._update_check_requested.is_set()
                         or self._update_apply_requested.is_set()):
                     break
-                time.sleep(0.5)
+                if self._stop.wait(0.5):
+                    return
 
     def _check_updates(self, update_module) -> None:
         from . import __version__
@@ -269,8 +305,12 @@ class LyricsService:
         update_dir = app_dir() / "updates"
         zip_path = update_dir / release.asset_name
         self._set_status(update_state="downloading", update_progress=0.0)
-        update_module.download(release, zip_path, proxy=self.config.update_proxy,
-                               progress=lambda value: self._set_status(update_progress=value))
+        update_module.download(
+            release,
+            zip_path,
+            proxy=self.config.update_proxy,
+            progress=lambda value: self._set_status(update_progress=value),
+        )
         staging = update_dir / f"staging-{release.version}"
         update_module.extract(zip_path, staging)
         self._set_status(update_state="ready", update_progress=1.0)
@@ -281,11 +321,16 @@ class LyricsService:
         self.stop()
         os._exit(0)
 
-    def update_config(self, *, align: str | None = None, animation: int | None | str = "keep",
-                      scroll_long_lines: bool | None = None,
-                      line_mode: str | None = None,
-                      page_units: int | None = None,
-                      standby_after: float | None = None) -> None:
+    def update_config(
+        self,
+        *,
+        align: str | None = None,
+        animation: int | None | str = "keep",
+        scroll_long_lines: bool | None = None,
+        line_mode: str | None = None,
+        page_units: int | None = None,
+        standby_after: float | None = None,
+    ) -> None:
         """Apply live settings from the console."""
         with self._lock:
             if align is not None:
@@ -326,12 +371,7 @@ class LyricsService:
                 engine._current_scroll = None
 
     def request_restore(self) -> None:
-        """Restore the original screen and stop following until :meth:`resume`.
-
-        Restoring without suspending was confusing: the next tick immediately wrote
-        lyrics again.  "Restore" now means "hand the screen back and stay out of
-        the way".
-        """
+        """Restore the original screen and stop following until :meth:`resume`."""
         self._restore_requested.set()
 
     def status(self) -> ServiceStatus:
@@ -345,68 +385,80 @@ class LyricsService:
         except Exception as exc:  # noqa: BLE001 - worker must never crash silently
             log.exception("service loop crashed")
             self._set_status(state="error", last_error=str(exc))
+        finally:
+            if self._playback_reader is not None:
+                self._playback_reader.close()
 
     async def _loop(self) -> None:
         loop = asyncio.get_running_loop()
         self._set_status(running=True, state="connecting")
-        while not self._stop.is_set():
-            if self._suspended.is_set():
-                # "Restore" hands the screen back and stays out of the way: no
-                # device access at all until resume() is called.
-                await asyncio.sleep(0.2)
-                continue
-            if self._screen is None:
-                if not await self._connect(loop):
-                    await asyncio.sleep(self.config.reconnect_seconds)
+        try:
+            while not self._stop.is_set():
+                if self._suspended.is_set():
+                    await asyncio.sleep(0.2)
                     continue
-            if self._upload_job is not None:
-                job, self._upload_job = self._upload_job, None
-                self._uploading = True
-                self._set_status(upload_state="uploading", upload_progress=0.0)
+                if self._screen is None:
+                    if not await self._connect(loop):
+                        await asyncio.sleep(self.config.reconnect_seconds)
+                        continue
+                if self._upload_job is not None:
+                    job, self._upload_job = self._upload_job, None
+                    self._uploading = True
+                    self._set_status(upload_state="uploading", upload_progress=0.0)
+                    try:
+                        await loop.run_in_executor(None, self._do_upload, job)
+                    except Exception as exc:  # noqa: BLE001 - a bad upload must not kill the worker
+                        log.warning("upload failed: %s", exc)
+                        self._set_status(upload_state="error", last_error=str(exc))
+                    finally:
+                        self._uploading = False
+                    await asyncio.sleep(0.1)
+                    continue
+                if self._scene_request is not None:
+                    category, option = self._scene_request
+                    self._scene_request = None
+                    try:
+                        self._screen.show_scene(category, option=option)
+                        log.info("switched to scene %d/%d", category, option)
+                    except (RenderError, OSError) as exc:
+                        self._set_status(last_error=str(exc))
+                    await asyncio.sleep(0.1)
+                    continue
+                if self._restore_requested.is_set():
+                    self._restore_requested.clear()
+                    self._restore_now()
+                    self._suspended.set()
+                    self._set_status(state="restored")
+                    await asyncio.sleep(0.2)
+                    continue
+                if self._suspended.is_set() or self._paused.is_set():
+                    await asyncio.sleep(0.2)
+                    continue
                 try:
-                    await loop.run_in_executor(None, self._do_upload, job)
-                except Exception as exc:  # noqa: BLE001 - a bad upload must not kill the worker
-                    log.warning("upload failed: %s", exc)
-                    self._set_status(upload_state="error", last_error=str(exc))
-                finally:
-                    self._uploading = False
-                await asyncio.sleep(0.1)
-                continue
-            if self._scene_request is not None:
-                category, option = self._scene_request
-                self._scene_request = None
-                try:
-                    self._screen.show_scene(category, option=option)
-                    log.info("switched to scene %d/%d", category, option)
-                except (RenderError, OSError) as exc:
+                    await self._tick(loop)
+                except (OSError, RenderError, TimeoutError) as exc:
+                    log.warning("device tick failed: %s", exc)
                     self._set_status(last_error=str(exc))
-                await asyncio.sleep(0.1)
-                continue
-            if self._restore_requested.is_set():
-                self._restore_requested.clear()
-                self._restore_now()
-                self._suspended.set()
-                self._set_status(state="restored")
-                await asyncio.sleep(0.2)
-                continue
-            if self._suspended.is_set() or self._paused.is_set():
-                await asyncio.sleep(0.2)
-                continue
-            try:
-                await self._tick(loop)
-            except Exception as exc:  # noqa: BLE001 - one bad frame must not kill the loop
-                log.warning("tick failed: %s", exc)
-                self._set_status(last_error=str(exc))
-                self._drop_device()
-            await asyncio.sleep(self.config.poll_seconds)
-        self._restore_now()
-        self._set_status(running=False, state="stopped")
+                    self._drop_device()
+                except Exception as exc:  # noqa: BLE001 - non-device errors keep HID alive
+                    log.warning("tick error (keeping device connected): %s", exc)
+                    self._set_status(last_error=str(exc))
+                await asyncio.sleep(self.config.poll_seconds)
+        finally:
+            self._restore_now()
+            self._set_status(running=False, state="stopped")
 
     async def _connect(self, loop: asyncio.AbstractEventLoop) -> bool:
+        screen: Screen | None = None
         try:
             screen = await loop.run_in_executor(None, self._screen_factory)
             snapshot = await loop.run_in_executor(None, screen.snapshot)
         except (OSError, RenderError, TimeoutError) as exc:
+            if screen is not None:
+                try:
+                    screen.close()
+                except Exception:  # noqa: BLE001
+                    pass
             log.info("device not ready: %s", exc)
             self._set_status(connected=False, state="waiting-device", last_error=str(exc))
             return False
@@ -414,6 +466,7 @@ class LyricsService:
         self._snapshot = snapshot
         self._engine = LyricsEngine(screen, EngineConfig(
             poll_seconds=self.config.poll_seconds,
+            media_poll_seconds=self.config.media_poll_seconds,
             align=self.config.align,
             scroll=self.config.scroll,
             animation=self.config.animation,
@@ -428,14 +481,43 @@ class LyricsService:
             interlude_clear_after=self.config.interlude_clear_after,
             interlude_scene_after=self.config.interlude_scene_after,
         ))
+        self._next_media_poll = 0.0
         log.info("device connected (firmware %s)", screen.firmware)
-        self._set_status(connected=True, firmware=screen.firmware, state="following",
-                         last_error="")
+        self._set_status(
+            connected=True, firmware=screen.firmware, state="following", last_error=""
+        )
         return True
+
+    def _effective_media_interval(self) -> float:
+        if self._playback_reader is not None and self._playback_reader.sixk.online:
+            return min(0.35, max(self.config.poll_seconds, self.config.media_poll_seconds))
+        return max(self.config.poll_seconds, self.config.media_poll_seconds)
+
+    async def _poll_playback(self) -> Playback | None:
+        now = time.monotonic()
+        event_ready = (
+            self._playback_reader is not None
+            and self._playback_reader.has_pending_event()
+        )
+        if now < self._next_media_poll and not event_ready:
+            return self._cached_playback
+
+        self._next_media_poll = now + self._effective_media_interval()
+        try:
+            result = await self._reader()
+        except Exception as exc:  # noqa: BLE001 - media read error must not drop HID
+            if now - self._last_media_warn_at >= 5.0:
+                self._last_media_warn_at = now
+                log.warning("playback read failed: %s", exc)
+            self._set_status(last_error=str(exc))
+            return self._cached_playback
+
+        self._cached_playback = result if isinstance(result, Playback) else None
+        return self._cached_playback
 
     async def _tick(self, loop: asyncio.AbstractEventLoop) -> None:
         assert self._engine is not None
-        playback = await self._reader()
+        playback = await self._poll_playback()
 
         with self._lock:
             nudges, self._nudge_queue = self._nudge_queue, []
@@ -447,25 +529,33 @@ class LyricsService:
         if next_line:
             self._align_to_next_line()
 
-        if playback is not None and isinstance(playback, Playback):
+        if playback is not None and playback.valid:
             if playback.track_key != self._engine.clock.track_key:
-                lyrics = await loop.run_in_executor(None, self._load_lyrics, playback)
+                try:
+                    lyrics = await loop.run_in_executor(None, self._load_lyrics, playback)
+                except Exception as exc:  # noqa: BLE001 - lyric error must not drop HID
+                    log.warning("lyric lookup failed: %s", exc)
+                    lyrics = Lyrics(title=playback.title, artist=playback.artist, source="error")
                 self._engine.set_lyrics(lyrics)
                 self._set_status(lyrics_source=lyrics.source)
                 log.info("track: %s - %s (%d lines, %s)", playback.title, playback.artist,
                          len(lyrics.lines), lyrics.source)
 
-        self._engine.tick(playback)  # type: ignore[arg-type]
+        self._engine.tick(playback)
 
-        if playback is None or not isinstance(playback, Playback):
-            self._set_status(source="none", track="", artist="", state="idle")
+        if playback is None or not playback.valid:
+            self._set_status(source="none", track="", artist="", position=None,
+                             duration=None, playing=False, line="", state="idle")
             return
         line = self._engine._current_line  # noqa: SLF001 - same package, read-only status
+        reported_pos = (
+            self._engine.clock.position if playback.position is not None else None
+        )
         self._set_status(
             source=playback.aumid.split(":")[0] if playback.aumid else "smtc",
             track=playback.title,
             artist=playback.artist,
-            position=playback.position,
+            position=reported_pos,
             duration=playback.duration,
             playing=playback.playing,
             line=line.text if line else "",

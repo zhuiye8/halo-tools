@@ -151,10 +151,16 @@ class Screen:
     """A connected Halo PixelBar."""
 
     def __init__(self, transport: WinHidTransport | None = None) -> None:
+        owned = transport is None
         self.transport = transport or WinHidTransport()
         self.protocol_version = 0
         self.firmware = ""
-        self._handshake()
+        try:
+            self._handshake()
+        except Exception:
+            if owned:
+                self.transport.close()
+            raise
 
     # ---------------------------------------------------------------- lifecycle
     def close(self) -> None:

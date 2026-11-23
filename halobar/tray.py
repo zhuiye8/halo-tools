@@ -87,6 +87,9 @@ class TrayApp:
             menu=self._build_menu(),
         )
         self._paused = False
+        self._stop = threading.Event()
+        self._refresh_thread: threading.Thread | None = None
+        self._last_key: tuple[str, str] | None = None
 
     def _build_menu(self):
         service = self.service
@@ -141,28 +144,38 @@ class TrayApp:
             pystray.MenuItem("退出", quit_app),
         )
 
-    def refresh(self) -> None:
+    def refresh(self, *, force: bool = False) -> None:
         try:
             status = self.service.status()
-            self.icon.title = f"halobar · {_menu_text(status)}"
+            text = _menu_text(status)
+            key = (status.state, text)
+            if not force and key == self._last_key:
+                return
+            self._last_key = key
+            self.icon.title = f"halobar · {text}"
             self.icon.update_menu()
         except Exception:  # noqa: BLE001 - tray refresh must never crash
             log.debug("tray refresh failed", exc_info=True)
 
     def run(self) -> None:
+        self._stop.clear()
         self.service.start()
-        threading.Thread(target=self._tick, name="halobar-tray-refresh", daemon=True).start()
+        self._refresh_thread = threading.Thread(
+            target=self._tick, name="halobar-tray-refresh", daemon=True
+        )
+        self._refresh_thread.start()
         try:
             self.icon.run()
         finally:
+            self._stop.set()
+            if self._refresh_thread is not None:
+                self._refresh_thread.join(2.0)
             self.service.stop()
 
     def _tick(self) -> None:
-        import time
-
-        while True:
+        self.refresh(force=True)
+        while not self._stop.wait(2.0):
             self.refresh()
-            time.sleep(2.0)
 
 
 def run_tray(service: LyricsService, console_url: str = "") -> None:

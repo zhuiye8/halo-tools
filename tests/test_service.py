@@ -135,3 +135,104 @@ def test_service_waits_without_device():
     assert status.connected is False
     assert status.state == "waiting-device"
     assert "no device" in status.last_error
+
+
+def test_service_decouples_media_polling_from_render_ticks():
+    screen = FakeScreen()
+    calls = {"n": 0}
+
+    async def slow_counting_reader():
+        calls["n"] += 1
+        return Playback(
+            title="测试歌曲", artist="测试歌手", playing=True,
+            position=0.5, duration=200.0, aumid="smtc",
+        )
+
+    service = LyricsService(
+        ServiceConfig(poll_seconds=0.02, media_poll_seconds=0.18),
+        screen_factory=lambda: screen,
+        reader=slow_counting_reader,
+        lyrics_client=FakeLyricsClient(),
+    )
+    service.start()
+    try:
+        time.sleep(0.35)
+    finally:
+        service.stop()
+
+    # Over ~350ms at 20ms render ticks (~17 ticks), media reader should only be polled ~2-4 times.
+    assert 1 <= calls["n"] <= 5
+
+
+def test_service_keeps_device_connected_on_media_error():
+    screen = FakeScreen()
+
+    async def flaky_reader():
+        raise RuntimeError("transient media failure")
+
+    service = LyricsService(
+        ServiceConfig(poll_seconds=0.02, media_poll_seconds=0.05),
+        screen_factory=lambda: screen,
+        reader=flaky_reader,
+        lyrics_client=FakeLyricsClient(),
+    )
+    service.start()
+    try:
+        deadline = time.monotonic() + 1.5
+        while time.monotonic() < deadline and not service.status().connected:
+            time.sleep(0.02)
+        time.sleep(0.15)
+        status = service.status()
+        assert status.connected is True
+        assert screen.closed is False
+        assert "transient media failure" in status.last_error
+    finally:
+        service.stop()
+
+
+def test_connect_closes_screen_when_snapshot_fails():
+    closed = {"n": 0}
+
+    class BrokenSnapshotScreen(FakeScreen):
+        def snapshot(self):
+            raise OSError("usb read timeout")
+
+        def close(self):
+            closed["n"] += 1
+            super().close()
+
+    service = LyricsService(
+        ServiceConfig(poll_seconds=0.02, reconnect_seconds=0.2),
+        screen_factory=lambda: BrokenSnapshotScreen(),
+        reader=make_reader(),
+        lyrics_client=FakeLyricsClient(),
+    )
+    service.start()
+    try:
+        deadline = time.monotonic() + 1.5
+        while time.monotonic() < deadline and closed["n"] == 0:
+            time.sleep(0.02)
+    finally:
+        service.stop()
+
+    assert closed["n"] >= 1
+
+
+def test_screen_closes_owned_transport_on_handshake_failure(monkeypatch):
+    from halobar.device import screen as screen_mod
+
+    closed = {"n": 0}
+
+    class FailingTransport:
+        def write(self, packet):
+            raise OSError("handshake io error")
+
+        def close(self):
+            closed["n"] += 1
+
+    monkeypatch.setattr(screen_mod, "WinHidTransport", FailingTransport)
+    try:
+        screen_mod.Screen()
+    except OSError:
+        pass
+    assert closed["n"] == 1

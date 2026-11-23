@@ -240,19 +240,36 @@ def download(release: Release, destination: Path, proxy: str | None = "auto",
                     command[1:1] = ["-x", candidate]
                 process = subprocess.Popen(command, creationflags=0x08000000,
                                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-                while process.poll() is None:
-                    if progress and total > 0:
+                deadline = time.monotonic() + max(timeout * 5.0, 300.0)
+                timed_out = False
+                try:
+                    while process.poll() is None:
+                        if time.monotonic() > deadline:
+                            timed_out = True
+                            process.kill()
+                            process.wait(timeout=5)
+                            break
+                        if progress and total > 0:
+                            try:
+                                progress(min(0.99, destination.stat().st_size / total))
+                            except OSError:
+                                pass
+                        time.sleep(0.2)
+                    if not timed_out and process.returncode == 0:
+                        last_detail = ""
+                        break
+                    detail = (
+                        "下载超时" if timed_out else
+                        (process.stderr.read() if process.stderr else b"").decode("utf-8", "replace")
+                    )
+                    last_detail = detail.strip()[:200]
+                    log.warning("curl download attempt failed: %s", last_detail)
+                finally:
+                    if process.stderr is not None:
                         try:
-                            progress(min(0.99, destination.stat().st_size / total))
+                            process.stderr.close()
                         except OSError:
                             pass
-                    time.sleep(0.2)
-                if process.returncode == 0:
-                    last_detail = ""
-                    break
-                detail = (process.stderr.read() if process.stderr else b"").decode("utf-8", "replace")
-                last_detail = detail.strip()[:200]
-                log.warning("curl download attempt failed: %s", last_detail)
                 time.sleep(0.5)
             if not last_detail:
                 break

@@ -146,5 +146,43 @@ def test_console_commands_and_settings():
 
         status, payload = fetch(f"{base}/api/command?token={token}", "POST", {"action": "nope"})
         assert status == 400
+
+        status, payload = fetch(f"{base}/api/debug/threads?token={token}")
+        assert status == 200
+        assert "threads" in payload and "handles" in payload and "media" in payload
+    finally:
+        console.stop()
+
+
+def test_asset_upload_accepts_payload_larger_than_64kb():
+    import base64
+    import io
+    import random
+
+    pytest = __import__("pytest")
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    # Random pixels produce an incompressible PNG whose base64 easily exceeds 64 KB.
+    rng = random.Random(42)
+    raw_pixels = bytes(rng.getrandbits(8) for _ in range(256 * 256 * 3))
+    buffer = io.BytesIO()
+    Image.frombytes("RGB", (256, 256), raw_pixels).save(buffer, format="PNG")
+    encoded = base64.b64encode(buffer.getvalue()).decode()
+    assert len(encoded) > 100 * 1024
+
+    service = make_service()
+    console = ConsoleServer(service, port=0)
+    url = console.start()
+    try:
+        base = f"http://127.0.0.1:{console.port}"
+        token = urlparse(url).query.split("token=")[1]
+        status, payload = fetch(f"{base}/api/asset/upload?token={token}", "POST", {
+            "filename": "large.png", "data": encoded, "fit": "contain",
+            "threshold": 128, "invert": False, "dither": False, "as_standby": True,
+        })
+        assert status == 200, payload
+        assert payload["ok"] is True
+        assert payload["frames"] == 1
     finally:
         console.stop()

@@ -77,8 +77,12 @@ _setupapi.SetupDiGetDeviceInterfaceDetailW.argtypes = [
 _kernel32.CreateFileW.restype = wt.HANDLE
 _kernel32.CreateFileW.argtypes = [wt.LPCWSTR, wt.DWORD, wt.DWORD, ctypes.c_void_p,
                                   wt.DWORD, wt.DWORD, wt.HANDLE]
+_kernel32.CloseHandle.restype = wt.BOOL
+_kernel32.CloseHandle.argtypes = [wt.HANDLE]
 _kernel32.CreateEventW.restype = wt.HANDLE
 _kernel32.CreateEventW.argtypes = [ctypes.c_void_p, wt.BOOL, wt.BOOL, wt.LPCWSTR]
+_kernel32.ResetEvent.restype = wt.BOOL
+_kernel32.ResetEvent.argtypes = [wt.HANDLE]
 _kernel32.WaitForSingleObject.restype = wt.DWORD
 _kernel32.WaitForSingleObject.argtypes = [wt.HANDLE, wt.DWORD]
 _kernel32.GetOverlappedResult.restype = wt.BOOL
@@ -174,17 +178,35 @@ class WinHidTransport:
 
     def __init__(self, path: str | None = None) -> None:
         self.path = path or find_vendor_path()
-        self._handle = _kernel32.CreateFileW(
+        self._handle = 0
+        self._event = 0
+        handle = _kernel32.CreateFileW(
             self.path, _GENERIC_READ | _GENERIC_WRITE, _SHARE_ALL, None,
             _OPEN_EXISTING, _FILE_FLAG_OVERLAPPED, None)
-        if self._handle == wt.HANDLE(-1).value:
+        if handle == wt.HANDLE(-1).value:
             error = ctypes.get_last_error()
             raise OSError(error, f"cannot open {self.path} (is another app using it?)")
+        event = _kernel32.CreateEventW(None, True, False, None)
+        if not event:
+            error = ctypes.get_last_error()
+            _kernel32.CloseHandle(handle)
+            raise OSError(error, "CreateEvent failed")
+        self._handle = handle
+        self._event = event
 
     def close(self) -> None:
         if self._handle:
             _kernel32.CloseHandle(self._handle)
             self._handle = 0
+        if self._event:
+            _kernel32.CloseHandle(self._event)
+            self._event = 0
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:  # noqa: BLE001
+            pass
 
     def __enter__(self) -> "WinHidTransport":
         return self
@@ -193,32 +215,33 @@ class WinHidTransport:
         self.close()
 
     def _transfer(self, buffer: ctypes.Array, size: int, read: bool, timeout_ms: int) -> int:
-        event = _kernel32.CreateEventW(None, 1, 0, None)
-        if not event:
-            raise OSError(ctypes.get_last_error(), "CreateEvent failed")
+        if not self._handle or not self._event:
+            raise OSError("HID transport is closed")
+        _kernel32.ResetEvent(self._event)
         overlapped = _OVERLAPPED()
-        overlapped.hEvent = event
+        overlapped.hEvent = self._event
         written = wt.DWORD(0)
-        try:
-            if read:
-                ok = _kernel32.ReadFile(self._handle, buffer, size,
-                                        ctypes.byref(written), ctypes.byref(overlapped))
-            else:
-                ok = _kernel32.WriteFile(self._handle, buffer, size,
-                                         ctypes.byref(written), ctypes.byref(overlapped))
-            if not ok:
-                error = ctypes.get_last_error()
-                if error != _ERROR_IO_PENDING:
-                    raise OSError(error, "HID transfer failed")
-                if _kernel32.WaitForSingleObject(event, timeout_ms) != _WAIT_OBJECT_0:
-                    _kernel32.CancelIoEx(self._handle, ctypes.byref(overlapped))
-                    return 0
-                if not _kernel32.GetOverlappedResult(
-                        self._handle, ctypes.byref(overlapped), ctypes.byref(written), False):
-                    return 0
-            return written.value
-        finally:
-            _kernel32.CloseHandle(event)
+        if read:
+            ok = _kernel32.ReadFile(self._handle, buffer, size,
+                                    ctypes.byref(written), ctypes.byref(overlapped))
+        else:
+            ok = _kernel32.WriteFile(self._handle, buffer, size,
+                                     ctypes.byref(written), ctypes.byref(overlapped))
+        if not ok:
+            error = ctypes.get_last_error()
+            if error != _ERROR_IO_PENDING:
+                raise OSError(error, "HID transfer failed")
+            if _kernel32.WaitForSingleObject(self._event, timeout_ms) != _WAIT_OBJECT_0:
+                _kernel32.CancelIoEx(self._handle, ctypes.byref(overlapped))
+                # Wait until the kernel finishes cancelling the IRP before releasing
+                # the stack-allocated OVERLAPPED and buffer.
+                _kernel32.GetOverlappedResult(
+                    self._handle, ctypes.byref(overlapped), ctypes.byref(written), True)
+                return 0
+            if not _kernel32.GetOverlappedResult(
+                    self._handle, ctypes.byref(overlapped), ctypes.byref(written), False):
+                return 0
+        return written.value
 
     def write(self, packet: bytes, timeout_ms: int = 5000) -> None:
         buffer = ctypes.create_string_buffer(packet, len(packet))

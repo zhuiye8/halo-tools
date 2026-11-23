@@ -33,7 +33,7 @@ $repoApi = 'https://api.github.com/repos/zhuiye8/halo-tools'
 function Send-Json {
     param([string]$Uri, [string]$Method)
     $jsonFile = Join-Path $env:TEMP "halobar-release-$Tag.json"
-    python scripts/publish_release.py --tag $Tag --zip $Zip --emit-json $jsonFile --digest $digest
+    python scripts/publish_release.py --tag $Tag --zip $Zip --emit-json $jsonFile "--digest=$digest"
     if ($LASTEXITCODE -ne 0) { throw 'failed to build the release body' }
     $bytes = [IO.File]::ReadAllBytes($jsonFile)
     return Invoke-RestMethod $Uri -Method $Method -Headers $headers `

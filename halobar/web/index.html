@@ -477,11 +477,15 @@ const $ = (id) => document.getElementById(id);
 let paused = false;
 let lastState = '';
 let lastEnv = null;
+let refreshInFlight = false;
+let logsInFlight = false;
 
 const STATE_TEXT = { idle: '空闲', following: '同步中', paused: '已暂停',
   restored: '已恢复屏幕', 'waiting-device': '等待设备', error: '错误', connecting: '连接中' };
 
 async function refresh() {
+  if (refreshInFlight) return;
+  refreshInFlight = true;
   try {
     const s = await api('/api/status');
     lastState = s.state || '';
@@ -536,6 +540,8 @@ async function refresh() {
   } catch (e) {
     $('state').textContent = '控制台连接失败';
     $('state').className = 'chip err';
+  } finally {
+    refreshInFlight = false;
   }
 }
 
@@ -562,11 +568,15 @@ async function saveSettings() {
 }
 
 async function refreshLogs() {
+  if (logsInFlight) return;
+  logsInFlight = true;
   try {
     const data = await api('/api/logs');
     $('logs').textContent = (data.lines || []).slice(-120).join('\n') || '（暂无日志）';
     $('logs').scrollTop = $('logs').scrollHeight;
-  } catch (e) { /* ignore */ }
+  } catch (e) { /* ignore */ } finally {
+    logsInFlight = false;
+  }
 }
 
 // ---------------------------------------------------------------- 环境与插件
@@ -686,6 +696,19 @@ fittedCanvas.height = SCREEN_H;
 const finalCanvas = document.createElement('canvas');
 finalCanvas.width = SCREEN_W;
 finalCanvas.height = SCREEN_H;
+const tmpCanvas = document.createElement('canvas');
+tmpCanvas.width = SCREEN_W;
+tmpCanvas.height = SCREEN_H;
+const tmpOutCanvas = document.createElement('canvas');
+tmpOutCanvas.width = SCREEN_W;
+tmpOutCanvas.height = SCREEN_H;
+
+function setSourceImage(bitmap) {
+  if (sourceImage && typeof sourceImage.close === 'function') {
+    sourceImage.close();
+  }
+  sourceImage = bitmap;
+}
 
 function currentOptions() {
   return {
@@ -732,15 +755,13 @@ function renderPreview() {
   const y = (SCREEN_H - drawH) / 2 + opts.offset_y * SCREEN_H;
 
   const fctx = finalCanvas.getContext('2d', { willReadFrequently: true });
-  // 先把 base 画到临时画布，再按缩放/位移重采样
-  const tmp = document.createElement('canvas');
-  tmp.width = SCREEN_W; tmp.height = SCREEN_H;
-  tmp.getContext('2d').putImageData(base, 0, 0);
+  // 先把 base 画到复用的临时画布，再按缩放/位移重采样
+  tmpCanvas.getContext('2d').putImageData(base, 0, 0);
 
   fctx.fillStyle = '#000';
   fctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
   fctx.imageSmoothingEnabled = true;
-  fctx.drawImage(tmp, x, y, drawW, drawH);
+  fctx.drawImage(tmpCanvas, x, y, drawW, drawH);
   const image = fctx.getImageData(0, 0, SCREEN_W, SCREEN_H);
 
   const gray = new Float32Array(SCREEN_W * SCREEN_H);
@@ -767,10 +788,8 @@ function renderPreview() {
   const viewCanvas = $('asset-canvas');
   const vctx = viewCanvas.getContext('2d');
   vctx.imageSmoothingEnabled = false;
-  const tmpOut = document.createElement('canvas');
-  tmpOut.width = SCREEN_W; tmpOut.height = SCREEN_H;
-  tmpOut.getContext('2d').putImageData(outImage, 0, 0);
-  vctx.drawImage(tmpOut, 0, 0, viewCanvas.width, viewCanvas.height);
+  tmpOutCanvas.getContext('2d').putImageData(outImage, 0, 0);
+  vctx.drawImage(tmpOutCanvas, 0, 0, viewCanvas.width, viewCanvas.height);
   $('asset-empty').style.display = 'none';
 }
 
@@ -804,7 +823,7 @@ $('asset-file').onchange = async () => {
   const file = $('asset-file').files[0];
   if (!file) return;
   try {
-    sourceImage = await createImageBitmap(file);
+    setSourceImage(await createImageBitmap(file));
   } catch (e) {
     $('asset-info').textContent = '无法读取这张图片';
     return;
@@ -885,7 +904,7 @@ function loadSample() {
   ctx.fillText('♪', 14, 10);
   ctx.fillText('♪', 242, 22);
   createImageBitmap(c).then((bitmap) => {
-    sourceImage = bitmap;
+    setSourceImage(bitmap);
     $('asset-info').textContent = '示例图 · 256×32';
     $('asset-progress').textContent = '';
     resetView();
@@ -948,10 +967,32 @@ $('btn-showasset').onclick = async () => {
   refresh();
 };
 
+let statusTimer = null;
+let logsTimer = null;
+
+function startPolling() {
+  if (!statusTimer) statusTimer = setInterval(refresh, 700);
+  if (!logsTimer) logsTimer = setInterval(refreshLogs, 2500);
+}
+
+function stopPolling() {
+  if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+  if (logsTimer) { clearInterval(logsTimer); logsTimer = null; }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopPolling();
+  } else {
+    refresh();
+    refreshLogs();
+    startPolling();
+  }
+});
+
 refresh();
-setInterval(refresh, 700);
 refreshLogs();
-setInterval(refreshLogs, 2500);
+if (!document.hidden) startPolling();
 </script>
 </body>
 </html>

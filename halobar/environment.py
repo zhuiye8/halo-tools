@@ -142,6 +142,8 @@ class EnvironmentMonitor:
 
     def stop(self) -> None:
         self._stop.set()
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(1.0)
 
     def refresh_now(self) -> None:
         try:

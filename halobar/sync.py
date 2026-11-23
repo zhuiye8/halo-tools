@@ -71,9 +71,11 @@ def display_units(text: str) -> int:
 class ProgressClock:
     """Estimates play position, preferring the player's own timeline when present.
 
-    NetEase (and some other clients) publish an SMTC session with an all-zero
-    timeline.  When that happens we accumulate wall-clock time while the session
-    reports ``playing``.  Pauses freeze the estimate; a new track resets it.
+    Supports decoupled sampling: a playback source may be sampled at 0.5-1.0 s
+    while the render loop ticks at 100 ms.  Between fresh samples (identified by
+    ``playback.observed_at`` or a changed ``playback.position``), the clock
+    interpolates forward smoothly using monotonic wall-clock time while playing,
+    and freezes while paused.
     """
 
     position: float = 0.0
@@ -81,34 +83,62 @@ class ProgressClock:
     track_key: str = ""
     offset: float = 0.0
     _last_tick: float = field(default_factory=time.monotonic, repr=False)
+    _last_observed_at: float | None = field(default=None, repr=False)
+    _last_reported_pos: float | None = field(default=None, repr=False)
 
     def reset(self, position: float = 0.0) -> None:
-        self.position = max(0.0, position) + self.offset
+        self.position = max(0.0, position + self.offset)
         self._last_tick = time.monotonic()
+        self._last_observed_at = None
+        self._last_reported_pos = None
 
     def nudge(self, seconds: float) -> None:
         self.position = max(0.0, self.position + seconds)
 
     def update(self, playback: Playback) -> float:
-        """Feed a playback snapshot and return the estimated position."""
+        """Feed a playback snapshot (fresh or cached) and return the estimated position."""
         now = time.monotonic()
-        elapsed = now - self._last_tick
+        elapsed = max(0.0, now - self._last_tick)
         self._last_tick = now
+        rate = max(0.0, playback.rate or 1.0)
 
         if playback.track_key != self.track_key:
             self.track_key = playback.track_key
-            self.position = self.offset
             self.playing = playback.playing
+            self._last_observed_at = playback.observed_at
+            self._last_reported_pos = playback.position
+            if playback.position is not None:
+                age = max(0.0, now - playback.observed_at) if playback.playing else 0.0
+                self.position = max(0.0, playback.position + age * rate + self.offset)
+            else:
+                self.position = max(0.0, self.offset)
+            if playback.duration and self.position > playback.duration:
+                self.position = playback.duration
             return self.position
 
         if playback.position is not None:
-            # The player gives us ground truth; snap on seeks, smooth small jitter.
-            if abs(playback.position + self.offset - self.position) > 0.75:
-                self.position = playback.position + self.offset
-            else:
-                self.position += (playback.position + self.offset - self.position) * 0.25
+            fresh = (
+                playback.observed_at != self._last_observed_at
+                or playback.position != self._last_reported_pos
+            )
+            if fresh:
+                self._last_observed_at = playback.observed_at
+                self._last_reported_pos = playback.position
+                age = max(0.0, now - playback.observed_at) if playback.playing else 0.0
+                target = max(0.0, playback.position + age * rate + self.offset)
+                if abs(target - self.position) > 0.75:
+                    self.position = target
+                else:
+                    self.position += (target - self.position) * 0.25
+            elif playback.playing and self.playing:
+                self.position += elapsed * rate
         elif playback.playing and self.playing:
-            self.position += elapsed * max(0.0, playback.rate or 1.0)
+            self._last_observed_at = playback.observed_at
+            self._last_reported_pos = None
+            self.position += elapsed * rate
+
+        if playback.duration and self.position > playback.duration:
+            self.position = playback.duration
         self.playing = playback.playing
         return self.position
 
@@ -126,6 +156,7 @@ class EngineConfig:
     """User-tunable behaviour of the sync engine."""
 
     poll_seconds: float = 0.1
+    media_poll_seconds: float = 0.5
     align: Align = Align.CENTER
     scroll: Scroll | None = None
     animation: int | None = None
@@ -169,7 +200,6 @@ class LyricsEngine:
         self._current_scroll = None
         self._interlude_state = "none"
 
-    # ------------------------------------------------------------------ helpers
     # ------------------------------------------------------------------ paging
     def _pages(self, text: str) -> list[str]:
         """Split a line into screen-sized pages (byte and width limits)."""
@@ -337,20 +367,33 @@ class LyricsEngine:
 
     # ---------------------------------------------------------------------- run
     async def run(self, duration: float | None = None, reader=None) -> None:
-        """Run the loop until ``duration`` elapses (or forever)."""
-        from .media import read_playback
+        """Run the loop until ``duration`` elapses (or forever).
 
-        reader = reader or read_playback
+        Decouples media polling (``media_poll_seconds``) from rendering ticks
+        (``poll_seconds``) so the CLI demo does not hammer SMTC at 10 Hz either.
+        """
+        from .media import PlaybackReader
+
+        owned_reader = PlaybackReader(smtc_interval=self.config.media_poll_seconds) if reader is None else None
+        read_fn = reader or owned_reader.read
         started = time.monotonic()
+        next_poll = 0.0
+        cached: Playback | None = None
         self._snapshot = self.screen.snapshot()
         try:
             while True:
-                playback = await reader(self.config.preferred_aumid)
-                self.tick(playback)
+                now = time.monotonic()
+                event_ready = owned_reader is not None and owned_reader.has_pending_event()
+                if now >= next_poll or event_ready:
+                    cached = await read_fn(self.config.preferred_aumid)
+                    next_poll = time.monotonic() + max(self.config.poll_seconds, self.config.media_poll_seconds)
+                self.tick(cached)
                 if duration is not None and time.monotonic() - started >= duration:
                     break
                 await asyncio.sleep(self.config.poll_seconds)
         finally:
+            if owned_reader is not None:
+                owned_reader.close()
             if self._snapshot is not None:
                 try:
                     self.screen.restore(self._snapshot)

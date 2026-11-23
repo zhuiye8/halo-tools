@@ -41,8 +41,27 @@ def test_segment_index_distributes_over_line():
 def test_clock_prefers_player_timeline():
     clock = ProgressClock()
     playing = Playback(title="t", artist="a", playing=True, position=30.0, duration=200.0)
-    assert clock.update(playing) == 0.0          # new track resets
-    assert abs(clock.update(playing) - 30.0) < 0.01
+    # Starting mid-song immediately aligns to the reported position instead of 0.0.
+    assert abs(clock.update(playing) - 30.0) < 0.05
+    assert abs(clock.update(playing) - 30.0) < 0.05
+
+
+def test_clock_interpolates_cached_snapshot_between_polls():
+    clock = ProgressClock()
+    snapshot = Playback(title="t", artist="a", playing=True, position=10.0, duration=200.0)
+    assert abs(clock.update(snapshot) - 10.0) < 0.05
+
+    # Simulate three 100ms render ticks reusing the same cached snapshot.
+    for expected in (10.1, 10.2, 10.3):
+        clock._last_tick -= 0.1
+        pos = clock.update(snapshot)
+        assert abs(pos - expected) < 0.03
+
+    # Pausing freezes interpolation even if time passes on the cached snapshot.
+    paused = Playback(title="t", artist="a", playing=False, position=10.3, duration=200.0)
+    frozen = clock.update(paused)
+    clock._last_tick -= 1.0
+    assert clock.update(paused) == frozen
 
 
 def test_clock_accumulates_without_timeline():

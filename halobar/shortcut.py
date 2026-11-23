@@ -30,17 +30,23 @@ class ShortcutTarget:
 
 def _desktop_path() -> Path:
     """Resolve the real Desktop folder (honours OneDrive redirection)."""
+    path_ptr = ctypes.c_void_p()
     try:
         guid = _GUID()
         ctypes.windll.ole32.CLSIDFromString(
             ctypes.c_wchar_p("{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}"), ctypes.byref(guid))
-        path_ptr = ctypes.c_wchar_p()
         result = ctypes.windll.shell32.SHGetKnownFolderPath(
             ctypes.byref(guid), 0, None, ctypes.byref(path_ptr))
         if result == 0 and path_ptr.value:
-            return Path(path_ptr.value)
+            return Path(ctypes.wstring_at(path_ptr.value))
     except Exception:  # noqa: BLE001 - fall back to the plain location
         pass
+    finally:
+        if path_ptr.value:
+            try:
+                ctypes.windll.ole32.CoTaskMemFree(path_ptr)
+            except Exception:  # noqa: BLE001
+                pass
     return Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Desktop"
 
 

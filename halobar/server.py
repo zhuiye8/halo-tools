@@ -49,7 +49,11 @@ class RingBufferHandler(logging.Handler):
             pass
 
     def snapshot(self) -> list[str]:
-        return list(self.records)
+        self.acquire()
+        try:
+            return list(self.records)
+        finally:
+            self.release()
 
 
 class _ConsoleHTTPServer(ThreadingHTTPServer):
@@ -110,6 +114,8 @@ class ConsoleServer:
             self._httpd.shutdown()
             self._httpd.server_close()
             self._httpd = None
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(2.0)
         logging.getLogger("halobar").removeHandler(self.logs)
 
     # -------------------------------------------------------------------- helpers
@@ -226,8 +232,12 @@ class ConsoleServer:
                     last = stack[-1]
                     where = f"{thread.name}: {Path(last.filename).name}:{last.lineno} {last.name}"
             groups[where] += 1
-        return {"threads": threading.active_count(), "handles": _handle_count(),
-                "top": groups.most_common(15)}
+        return {
+            "threads": threading.active_count(),
+            "handles": _handle_count(),
+            "top": groups.most_common(15),
+            "media": self.service.media_diagnostics(),
+        }
 
     # ------------------------------------------------------------------- assets
     def handle_asset_upload(self, payload: dict) -> tuple[int, dict]:
@@ -322,8 +332,11 @@ class ConsoleServer:
         return HTTPStatus.OK, {"ok": True}
 
 
-def _handle_count() -> int:
-    """Current handle count of this process (Windows only, best effort)."""
+_DEFAULT_MAX_BODY = 64 * 1024
+_UPLOAD_MAX_BODY = 50 * 1024 * 1024
+
+
+def _init_handle_counter():
     try:
         import ctypes
         import ctypes.wintypes as wt
@@ -332,12 +345,33 @@ def _handle_count() -> int:
         kernel32.GetCurrentProcess.restype = wt.HANDLE
         kernel32.GetProcessHandleCount.restype = wt.BOOL
         kernel32.GetProcessHandleCount.argtypes = [wt.HANDLE, ctypes.POINTER(wt.DWORD)]
-        count = wt.DWORD(0)
-        if kernel32.GetProcessHandleCount(kernel32.GetCurrentProcess(), ctypes.byref(count)):
+        return kernel32, wt.DWORD
+    except Exception:  # noqa: BLE001 - non-Windows
+        return None, None
+
+
+_WIN_KERNEL32, _WIN_DWORD = _init_handle_counter()
+
+
+def _handle_count() -> int:
+    """Current handle count of this process (Windows only, best effort)."""
+    if _WIN_KERNEL32 is None or _WIN_DWORD is None:
+        return 0
+    try:
+        import ctypes
+
+        count = _WIN_DWORD(0)
+        if _WIN_KERNEL32.GetProcessHandleCount(
+            _WIN_KERNEL32.GetCurrentProcess(), ctypes.byref(count)
+        ):
             return int(count.value)
     except Exception:  # noqa: BLE001 - diagnostics only
         pass
     return 0
+
+
+class _PayloadTooLarge(ValueError):
+    pass
 
 
 def _make_handler(server: ConsoleServer):
@@ -364,10 +398,15 @@ def _make_handler(server: ConsoleServer):
             self.end_headers()
             self.wfile.write(body)
 
-        def _body(self) -> dict:
-            length = int(self.headers.get("Content-Length") or 0)
-            if length <= 0 or length > 64 * 1024:
+        def _body(self, max_bytes: int = _DEFAULT_MAX_BODY) -> dict:
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
                 return {}
+            if length <= 0:
+                return {}
+            if length > max_bytes:
+                raise _PayloadTooLarge(f"request body exceeds {max_bytes} bytes")
             try:
                 data = json.loads(self.rfile.read(length).decode("utf-8"))
             except (ValueError, UnicodeDecodeError):
@@ -398,7 +437,12 @@ def _make_handler(server: ConsoleServer):
                 self._json(HTTPStatus.UNAUTHORIZED, {"error": "token required"})
                 return
             path = urlparse(self.path).path
-            payload = self._body()
+            max_bytes = _UPLOAD_MAX_BODY if path == "/api/asset/upload" else _DEFAULT_MAX_BODY
+            try:
+                payload = self._body(max_bytes=max_bytes)
+            except _PayloadTooLarge as exc:
+                self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": str(exc)})
+                return
             if path == "/api/command":
                 status, data = server.handle_command(payload)
             elif path == "/api/settings":
