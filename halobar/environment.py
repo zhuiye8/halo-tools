@@ -2,6 +2,12 @@
 
 The console uses this to tell the user exactly what is missing instead of showing a
 vague "no progress" state.
+
+Important: probing involves HTTP timeouts and a ``tasklist`` subprocess, so it runs
+in a background thread and the request path only ever reads a cached snapshot.
+Doing this work inside the request handler (as an earlier version did) could block
+a request forever and let the thread-per-request server pile up thousands of
+threads.
 """
 
 from __future__ import annotations
@@ -12,7 +18,7 @@ import subprocess
 import threading
 import time
 import urllib.request
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -37,7 +43,7 @@ class Environment:
     sixk: bool = False
     tempo_hub: bool = False
     checked_at: float = 0.0
-    links: dict | None = None
+    links: dict = field(default_factory=lambda: dict(LINKS))
 
     @property
     def ready(self) -> bool:
@@ -45,7 +51,7 @@ class Environment:
 
     def as_dict(self) -> dict:
         data = asdict(self)
-        data["links"] = LINKS
+        data["links"] = dict(LINKS)
         data["ready"] = self.ready
         return data
 
@@ -81,7 +87,7 @@ def netease_path() -> Path | None:
     return None
 
 
-def sixk_available(timeout: float = 0.6) -> bool:
+def sixk_available(timeout: float = 0.5) -> bool:
     try:
         with urllib.request.urlopen(_SIXK_ENDPOINT, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8", "replace"))
@@ -90,38 +96,63 @@ def sixk_available(timeout: float = 0.6) -> bool:
         return False
 
 
-def tempo_hub_running() -> bool:
+def tempo_hub_running(timeout: float = 3.0) -> bool:
     try:
         result = subprocess.run(
             ["tasklist", "/fi", "imagename eq EDIFIER TempoHub.exe", "/fo", "csv", "/nh"],
-            capture_output=True, text=True, creationflags=_CREATE_NO_WINDOW, timeout=5)
+            capture_output=True, text=True, creationflags=_CREATE_NO_WINDOW, timeout=timeout)
         return "EDIFIER TempoHub" in (result.stdout or "")
     except (OSError, subprocess.SubprocessError):
         return False
 
 
-class EnvironmentMonitor:
-    """Cached environment probe (the console polls status every ~700 ms)."""
+def probe() -> Environment:
+    """Blocking probe; only ever called from the monitor's background thread."""
+    exe = netease_path()
+    return Environment(
+        netease_path=str(exe) if exe else "",
+        netease_exe=bool(exe),
+        betterncm=bool(exe and (exe.parent / "msimg32.dll").exists())
+        or _BETTERNCM_DATA.exists(),
+        sixk=sixk_available(),
+        tempo_hub=tempo_hub_running(),
+        checked_at=time.time(),
+    )
 
-    def __init__(self, ttl: float = 5.0) -> None:
+
+class EnvironmentMonitor:
+    """Cached, non-blocking environment probe.
+
+    ``get()`` returns the last snapshot immediately; ``start()`` refreshes it in the
+    background (immediately, then every ``ttl`` seconds).
+    """
+
+    def __init__(self, ttl: float = 30.0) -> None:
         self.ttl = ttl
-        self._lock = threading.Lock()
-        self._cached: Environment | None = None
+        self._snapshot = Environment()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, name="halobar-env", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def refresh_now(self) -> None:
+        try:
+            self._snapshot = probe()
+        except Exception as exc:  # noqa: BLE001 - diagnostics only
+            log.debug("environment probe failed: %s", exc)
+
+    def _run(self) -> None:
+        self.refresh_now()
+        while not self._stop.wait(max(1.0, self.ttl)):
+            self.refresh_now()
 
     def get(self) -> Environment:
-        with self._lock:
-            now = time.time()
-            if self._cached and now - self._cached.checked_at < self.ttl:
-                return self._cached
-            exe = netease_path()
-            env = Environment(
-                netease_path=str(exe) if exe else "",
-                netease_exe=bool(exe),
-                betterncm=bool(exe and (exe.parent / "msimg32.dll").exists())
-                or _BETTERNCM_DATA.exists(),
-                sixk=sixk_available(),
-                tempo_hub=tempo_hub_running(),
-                checked_at=now,
-            )
-            self._cached = env
-            return env
+        return self._snapshot

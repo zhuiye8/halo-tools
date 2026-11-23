@@ -79,18 +79,26 @@ def test_sixk_available_parses_payload(monkeypatch):
 def test_environment_monitor_caches(monkeypatch):
     calls = {"n": 0}
 
-    def fake_sixk(timeout=0.6):
+    def fake_sixk(timeout=0.5):
         calls["n"] += 1
         return True
 
     monkeypatch.setattr(environment, "sixk_available", fake_sixk)
-    monkeypatch.setattr(environment, "tempo_hub_running", lambda: False)
+    monkeypatch.setattr(environment, "tempo_hub_running", lambda timeout=3.0: False)
     monitor = environment.EnvironmentMonitor(ttl=60)
+    monitor.refresh_now()
     first = monitor.get()
     second = monitor.get()
     assert first.sixk is True
     assert second is first
     assert calls["n"] == 1
+
+
+def test_environment_monitor_get_is_non_blocking():
+    monitor = environment.EnvironmentMonitor(ttl=60)
+    snapshot = monitor.get()
+    assert snapshot.sixk is False          # no probe yet, but returns instantly
+    assert snapshot.as_dict()["links"]["sixk"]
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="named mutex is Windows only")

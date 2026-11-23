@@ -166,7 +166,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not args.no_console:
         console = ConsoleServer(service, port=config.console_port,
                                 token=config.token, settings=config,
-                                environment=EnvironmentMonitor())
+                                environment=EnvironmentMonitor(ttl=30.0))
         console_url = console.start()
         config.console_port = console.port
         config.save()

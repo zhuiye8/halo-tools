@@ -51,16 +51,45 @@ class Playback:
         return bool(self.title)
 
 
+_manager_cache = None
+_session_cache = None
+_session_checked = 0.0
+SESSION_TTL = 2.0
+
+
+async def _get_manager():
+    global _manager_cache
+    if _manager_cache is None:
+        _manager_cache = await _Manager.request_async()
+    return _manager_cache
+
+
 async def list_sessions() -> list[str]:
     """Return the AUMID of every SMTC session."""
     if not WINRT_AVAILABLE:
         return []
-    manager = await _Manager.request_async()
+    manager = await _get_manager()
     return [session.source_app_user_model_id for session in manager.get_sessions()]
 
 
 async def read_playback(preferred_aumid: str | None = None,
-                        use_sixk: bool = True) -> Playback | None:
+                        use_sixk: bool = True, timeout: float = 3.0) -> Playback | None:
+    """Read the best available playback state, with a hard timeout.
+
+    WinRT calls can block for a long time when the media session provider is in a
+    bad state (this showed up as thousands of threads waiting on LPC replies in a
+    long-running build), so every read is bounded.
+    """
+    try:
+        return await asyncio.wait_for(
+            _read_playback(preferred_aumid, use_sixk), timeout=timeout)
+    except (asyncio.TimeoutError, TimeoutError):
+        log.warning("media read timed out after %.1fs", timeout)
+        return None
+
+
+async def _read_playback(preferred_aumid: str | None = None,
+                         use_sixk: bool = True) -> Playback | None:
     """Read the best available playback state.
 
     Order: the 6K Labs local endpoint (exact position, opt-in plugin) → Windows
@@ -75,7 +104,7 @@ async def read_playback(preferred_aumid: str | None = None,
             return plugin
     if not WINRT_AVAILABLE:
         return None
-    manager = await _Manager.request_async()
+    manager = await _get_manager()
     sessions = list(manager.get_sessions())
     if not sessions:
         return None

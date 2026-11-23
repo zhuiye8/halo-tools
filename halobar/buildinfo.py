@@ -21,7 +21,13 @@ def _candidates() -> list[Path]:
     return [Path(__file__).resolve().parent.parent / "build-info.json"]
 
 
+_cache: dict | None = None
+
+
 def load() -> dict:
+    global _cache
+    if _cache is not None:
+        return _cache
     for path in _candidates():
         if not path.exists():
             continue
@@ -30,8 +36,10 @@ def load() -> dict:
         except (OSError, ValueError) as exc:
             log.debug("build-info unreadable: %s", exc)
             continue
-        return data if isinstance(data, dict) else {}
-    return {}
+        _cache = data if isinstance(data, dict) else {}
+        return _cache
+    _cache = {}
+    return _cache
 
 
 def describe() -> str:

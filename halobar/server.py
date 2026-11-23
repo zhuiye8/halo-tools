@@ -52,6 +52,20 @@ class RingBufferHandler(logging.Handler):
         return list(self.records)
 
 
+class _ConsoleHTTPServer(ThreadingHTTPServer):
+    """Thread-per-request server that does not keep finished threads around.
+
+    ``ThreadingHTTPServer`` defaults to ``block_on_close = True``, which makes the
+    server retain every request thread object for its whole lifetime.  For a page
+    that polls twice a second that list grows without bound, so it is disabled and
+    request handlers get a socket timeout to avoid stuck threads.
+    """
+
+    daemon_threads = True
+    block_on_close = False
+    allow_reuse_address = True
+
+
 class ConsoleServer:
     def __init__(self, service: LyricsService, port: int = 8765, token: str | None = None,
                  settings=None, environment=None) -> None:
@@ -72,7 +86,7 @@ class ConsoleServer:
         last_error = None
         for offset in range(0, 10):
             try:
-                self._httpd = ThreadingHTTPServer(("127.0.0.1", self.port + offset), handler)
+                self._httpd = _ConsoleHTTPServer(("127.0.0.1", self.port + offset), handler)
                 break
             except OSError as exc:  # port busy -> try the next one
                 last_error = exc
@@ -83,11 +97,15 @@ class ConsoleServer:
         self._thread = threading.Thread(target=self._httpd.serve_forever,
                                         name="halobar-console", daemon=True)
         self._thread.start()
+        if self.environment is not None and hasattr(self.environment, "start"):
+            self.environment.start()
         url = f"http://127.0.0.1:{self.port}/?token={self.token}"
         log.info("console listening on %s", url)
         return url
 
     def stop(self) -> None:
+        if self.environment is not None and hasattr(self.environment, "stop"):
+            self.environment.stop()
         if self._httpd is not None:
             self._httpd.shutdown()
             self._httpd.server_close()
@@ -190,6 +208,27 @@ class ConsoleServer:
         self.service.request_update_apply()
         return HTTPStatus.OK, {"ok": True}
 
+    def thread_snapshot(self) -> dict:
+        """Diagnostics: how many threads exist and where they are stuck."""
+        import collections
+        import sys
+        import threading
+        import traceback
+
+        frames = sys._current_frames()
+        groups: collections.Counter[str] = collections.Counter()
+        for thread in threading.enumerate():
+            frame = frames.get(thread.ident)
+            where = f"{thread.name}: (no frame)"
+            if frame is not None:
+                stack = traceback.extract_stack(frame)
+                if stack:
+                    last = stack[-1]
+                    where = f"{thread.name}: {Path(last.filename).name}:{last.lineno} {last.name}"
+            groups[where] += 1
+        return {"threads": threading.active_count(), "handles": _handle_count(),
+                "top": groups.most_common(15)}
+
     # ------------------------------------------------------------------- assets
     def handle_asset_upload(self, payload: dict) -> tuple[int, dict]:
         import base64
@@ -283,9 +322,29 @@ class ConsoleServer:
         return HTTPStatus.OK, {"ok": True}
 
 
+def _handle_count() -> int:
+    """Current handle count of this process (Windows only, best effort)."""
+    try:
+        import ctypes
+        import ctypes.wintypes as wt
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.GetCurrentProcess.restype = wt.HANDLE
+        kernel32.GetProcessHandleCount.restype = wt.BOOL
+        kernel32.GetProcessHandleCount.argtypes = [wt.HANDLE, ctypes.POINTER(wt.DWORD)]
+        count = wt.DWORD(0)
+        if kernel32.GetProcessHandleCount(kernel32.GetCurrentProcess(), ctypes.byref(count)):
+            return int(count.value)
+    except Exception:  # noqa: BLE001 - diagnostics only
+        pass
+    return 0
+
+
 def _make_handler(server: ConsoleServer):
     class Handler(BaseHTTPRequestHandler):
         server_version = "halobar-console/0.1"
+        protocol_version = "HTTP/1.0"
+        timeout = 15          # socketserver applies this to each connection
 
         def log_message(self, fmt: str, *args: object) -> None:  # noqa: A003
             log.debug("http %s", fmt % args)
@@ -328,6 +387,8 @@ def _make_handler(server: ConsoleServer):
                 self._json(HTTPStatus.OK, server.status_payload())
             elif path == "/api/logs":
                 self._json(HTTPStatus.OK, {"lines": server.logs.snapshot()})
+            elif path == "/api/debug/threads":
+                self._json(HTTPStatus.OK, server.thread_snapshot())
             else:
                 self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
