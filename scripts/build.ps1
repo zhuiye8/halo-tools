@@ -2,12 +2,18 @@
 # Build the portable Windows package: dist/halobar/ + dist/halobar-v<version>-win64.zip
 param(
     [switch]$SkipTests,
-    [switch]$SkipZip
+    [switch]$SkipZip,
+    [string]$Version = ''
 )
 
 $ErrorActionPreference = 'Continue'
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
+
+if (-not $Version) {
+    $Version = (Select-String -Path 'halobar/__init__.py' -Pattern '__version__ = "([^"]+)"').Matches[0].Groups[1].Value
+}
+Write-Host "halobar v$Version" -ForegroundColor Magenta
 
 function Invoke-Step {
     param([string]$Name, [scriptblock]$Action)
@@ -15,9 +21,6 @@ function Invoke-Step {
     & $Action
     if ($LASTEXITCODE -ne 0) { throw "$Name failed (exit $LASTEXITCODE)" }
 }
-
-$version = (Select-String -Path 'halobar/__init__.py' -Pattern '__version__ = "([^"]+)"').Matches[0].Groups[1].Value
-Write-Host "halobar v$version" -ForegroundColor Magenta
 
 if (-not $SkipTests) {
     Invoke-Step 'tests' { python -m pytest -q }

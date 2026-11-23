@@ -91,6 +91,8 @@ def main() -> int:
     parser.add_argument("--tag", required=True, help="e.g. v0.1.0")
     parser.add_argument("--zip", type=Path, default=None, help="asset to upload")
     parser.add_argument("--notes-file", type=Path, default=None)
+    parser.add_argument("--digest", default=None,
+                        help="sha256 of the asset already on GitHub (hex, no prefix)")
     parser.add_argument("--emit-json", type=Path, default=None,
                         help="write the release JSON body here instead of calling the API")
     args = parser.parse_args()
@@ -105,9 +107,16 @@ def main() -> int:
     if zip_path is None:
         candidate = ROOT / f"dist/halobar-v{version}-win64.zip"
         zip_path = candidate if candidate.exists() else None
-    if zip_path is not None:
+
+    # The digest must describe the file on GitHub, not a local rebuild: PyInstaller
+    # output is not byte-reproducible, so a fresh build has a different hash.
+    digest = args.digest
+    if digest is None and zip_path is not None and zip_path.exists():
         digest = hashlib.sha256(zip_path.read_bytes()).hexdigest().upper()
-        body += f"\n## 校验\n\n```\n{digest}  {zip_path.name}\n```\n"
+    if digest:
+        digest = digest.lower().replace("sha256:", "").upper()
+        name = zip_path.name if zip_path is not None else f"halobar-v{version}-win64.zip"
+        body += f"\n## 校验\n\n```\n{digest}  {name}\n```\n"
 
     payload = {"tag_name": args.tag, "name": f"halobar {args.tag}",
                "body": body, "draft": False, "prerelease": False}
@@ -115,7 +124,7 @@ def main() -> int:
     if args.emit_json:
         args.emit_json.write_text(json.dumps(payload, ensure_ascii=False),
                                   encoding="utf-8")
-        print(f"wrote {args.emit_json} ({len(body)} body chars)")
+        print(f"wrote {args.emit_json} ({len(body)} body chars, digest={digest or '-'})")
         return 0
 
     try:

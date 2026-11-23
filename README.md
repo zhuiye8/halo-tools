@@ -87,7 +87,10 @@ python -m halobar probe        # 读设备状态
 python -m halobar lyrics --title 如愿 --artist 王菲
 python -m pytest               # 单元测试，不需要硬件
 python scripts/build.ps1       # 打包：dist/halobar-v<版本>-win64.zip
+python scripts/release.ps1     # 测试 + 打包 + 冒烟测试 + 发布 Release
 ```
+
+发布流程（版本号、打 tag、自检清单）见 [docs/RELEASING.md](docs/RELEASING.md)。仓库不使用 GitHub Actions 发布，全部在本地完成。
 
 代码分成几块：`device/` 是 HID 协议与屏幕操作，`media.py` 读进度，`lyrics.py` 负责取词与解析，`sync.py` 是同步引擎，`service.py` 串起后台线程，`server.py` 与 `web/` 是控制台。所有对设备的写操作都经过 `service.py` 里的单一线程，避免并发写坏屏幕。
 
