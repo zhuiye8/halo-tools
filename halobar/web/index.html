@@ -4,201 +4,326 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="halo-token" content="__HALO_TOKEN__">
-<title>halobar 控制台</title>
+<title>halobar · 花再 PixelBar 歌词</title>
 <style>
   :root {
-    --bg: #16171d; --card: #1f2028; --line: #2c2e39; --text: #e7e8ee;
-    --muted: #9aa0b0; --accent: #f0b4c8; --ok: #59c98d; --warn: #e2b341; --err: #e2635f;
+    --pink: #ff7aa8;
+    --pink-soft: #ffe3ee;
+    --pink-line: #ffd0e2;
+    --lav: #8f8bff;
+    --sky: #6fb7ff;
+    --mint: #4fd1a5;
+    --sun: #ffb84d;
+    --ink: #3d3648;
+    --ink-soft: #7b7387;
+    --ink-faint: #a9a2b3;
+    --card: #ffffff;
+    --card-alt: #fffafc;
+    --line: #f3e6ee;
+    --ok: #2fae7c;
+    --warn: #e08a1e;
+    --err: #e75a6a;
+    --shadow: 0 10px 30px rgba(255, 154, 187, .16);
   }
   * { box-sizing: border-box; }
+  html, body { min-height: 100%; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 14px/1.55 "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+    margin: 0;
+    color: var(--ink);
+    font: 14px/1.65 "Microsoft YaHei UI", "Segoe UI", "PingFang SC", system-ui, sans-serif;
+    background:
+      radial-gradient(900px 420px at 8% -10%, #ffe3ef 0%, rgba(255, 227, 239, 0) 62%),
+      radial-gradient(760px 380px at 100% 0%, #e2f1ff 0%, rgba(226, 241, 255, 0) 60%),
+      radial-gradient(700px 520px at 50% 118%, #e8fff6 0%, rgba(232, 255, 246, 0) 66%),
+      linear-gradient(180deg, #fffdfe 0%, #f8fbff 55%, #f4fffb 100%);
+    background-attachment: fixed;
   }
-  .wrap { max-width: 980px; margin: 0 auto; padding: 22px 18px 40px; }
-  header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-  header h1 { font-size: 18px; margin: 0; font-weight: 600; letter-spacing: .5px; }
-  .badge {
-    font-size: 12px; padding: 2px 10px; border-radius: 999px;
-    background: #2a2c36; color: var(--muted); border: 1px solid var(--line);
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 26px 20px 56px; }
+
+  /* ---------- header ---------- */
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .logo {
+    width: 44px; height: 44px; border-radius: 14px; flex: 0 0 auto;
+    background: linear-gradient(135deg, #ff9ec2, #b9a7ff 70%, #8fd9ff);
+    display: grid; place-items: center; color: #fff; font-size: 20px;
+    box-shadow: 0 8px 20px rgba(255, 140, 180, .35);
   }
-  .badge.ok { color: var(--ok); border-color: #2f4a3a; }
-  .badge.warn { color: var(--warn); border-color: #4a4227; }
-  .badge.err { color: var(--err); border-color: #4a2b2b; }
+  header h1 {
+    margin: 0; font-size: 21px; letter-spacing: .5px; font-weight: 700;
+    background: linear-gradient(92deg, #ff6f9c, #9a7dff 60%, #3fb6ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header h1 small { font-size: 12px; color: var(--ink-faint); -webkit-text-fill-color: var(--ink-faint); margin-left: 8px; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: #fff; border: 1px solid var(--pink-line); color: var(--ink-soft);
+    box-shadow: 0 3px 10px rgba(255, 175, 200, .14);
+  }
+  .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #c9c3d4; }
+  .chip.ok { color: var(--ok); border-color: #c8eddd; }
+  .chip.ok::before { background: var(--ok); box-shadow: 0 0 0 3px rgba(79, 209, 165, .18); }
+  .chip.warn { color: var(--warn); border-color: #f6e2bf; }
+  .chip.warn::before { background: var(--sun); box-shadow: 0 0 0 3px rgba(255, 184, 77, .18); }
+  .chip.err { color: var(--err); border-color: #f6cdd2; }
+  .chip.err::before { background: var(--err); box-shadow: 0 0 0 3px rgba(231, 90, 106, .16); }
+
+  /* ---------- layout ---------- */
+  .grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr); align-items: start; }
+  .col { display: grid; gap: 16px; }
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: minmax(0, 1fr); }
+    .wrap { padding: 18px 14px 40px; }
+  }
+
+  /* ---------- cards ---------- */
   .card {
-    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-    padding: 16px 18px; margin-bottom: 14px;
+    position: relative; background: var(--card); border: 1px solid var(--line);
+    border-radius: 20px; padding: 18px 20px; box-shadow: var(--shadow);
+    overflow: hidden;
   }
-  .card h2 { font-size: 13px; margin: 0 0 12px; color: var(--muted); font-weight: 600; letter-spacing: .8px; }
-  .track { font-size: 20px; font-weight: 600; }
-  .artist { color: var(--muted); margin-top: 2px; }
+  .card::after {
+    content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
+    background: linear-gradient(90deg, #ffb3cd, #c9b8ff 45%, #9fe6d3);
+    opacity: .85;
+  }
+  .card h2 {
+    display: flex; align-items: center; gap: 8px;
+    margin: 0 0 14px; font-size: 13px; font-weight: 700; letter-spacing: 1.2px;
+    color: var(--ink-soft); text-transform: uppercase;
+  }
+  .card h2 .ico { font-size: 15px; filter: saturate(1.1); }
+
+  /* ---------- now playing ---------- */
+  .track { font-size: 22px; font-weight: 800; letter-spacing: .3px; line-height: 1.35; }
+  .artist { color: var(--ink-soft); margin-top: 2px; font-size: 13px; }
   .line {
-    margin-top: 14px; padding: 14px 16px; border-radius: 10px;
-    background: #191a21; border: 1px dashed var(--line);
-    font-size: 17px; letter-spacing: 1px; min-height: 26px;
-    color: var(--accent); word-break: break-all;
+    margin-top: 14px; padding: 16px 18px; border-radius: 16px; min-height: 28px;
+    background: linear-gradient(180deg, #fff7fb, #fff); border: 1.5px dashed var(--pink-line);
+    font-size: 19px; font-weight: 600; letter-spacing: 1.2px; color: #d4497e;
+    word-break: break-all;
   }
-  .progress { height: 6px; background: #2a2c36; border-radius: 4px; margin-top: 14px; overflow: hidden; }
-  .progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s linear; }
-  .meta { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-top: 6px; }
-  .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  .progress { height: 9px; background: #fdeef4; border-radius: 999px; margin-top: 16px; overflow: hidden; }
+  .progress > i {
+    display: block; height: 100%; width: 0; border-radius: 999px;
+    background: linear-gradient(90deg, #ff9dbe, #b9a8ff 60%, #7fdcff);
+    transition: width .3s linear;
+    box-shadow: 0 0 12px rgba(255, 140, 180, .45);
+  }
+  .meta { display: flex; justify-content: space-between; color: var(--ink-faint); font-size: 12px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+
+  /* ---------- buttons ---------- */
+  .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; align-items: center; }
   button {
-    font: inherit; color: var(--text); background: #2a2c36; border: 1px solid var(--line);
-    padding: 8px 14px; border-radius: 9px; cursor: pointer; transition: .15s;
+    font: inherit; font-weight: 600; color: var(--ink); cursor: pointer;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 9px 16px; transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+    box-shadow: 0 3px 10px rgba(180, 160, 200, .10);
   }
-  button:hover { background: #333646; border-color: #3d4152; }
-  button.primary { background: #3a2f38; border-color: #55414c; color: var(--accent); }
-  button:disabled { opacity: .4; cursor: default; }
-  label.field { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-  select, input[type=number] {
-    font: inherit; color: var(--text); background: #23242d; border: 1px solid var(--line);
-    border-radius: 8px; padding: 6px 8px;
+  button:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(255, 150, 190, .22); background: #fffafc; }
+  button:active { transform: translateY(0); }
+  button:disabled { opacity: .45; cursor: default; transform: none; box-shadow: none; }
+  button.primary {
+    color: #fff; border: none;
+    background: linear-gradient(135deg, #ff86ad, #a58cff 70%, #6fc9ff);
+    box-shadow: 0 8px 20px rgba(255, 130, 175, .35);
   }
-  input[type=number] { width: 72px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  button.primary:hover { box-shadow: 0 12px 26px rgba(255, 130, 175, .45); }
+  button.ghost { color: #d0497c; border-color: var(--pink-line); background: #fff6fa; }
+
+  /* ---------- form ---------- */
+  label.field { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 13px; white-space: nowrap; }
+  label.field.wide { grid-column: 1 / -1; }
+  label.field.wide input[type=file] { flex: 1; min-width: 0; }
+  select, input[type=number], input[type=file] {
+    font: inherit; color: var(--ink); background: #fff; border: 1px solid var(--line);
+    border-radius: 10px; padding: 7px 10px; box-shadow: inset 0 1px 2px rgba(190, 170, 210, .08);
+  }
+  input[type=number] { width: 84px; }
+  input[type=range] { accent-color: var(--pink); width: 130px; }
+  input[type=checkbox] { accent-color: var(--pink); width: 16px; height: 16px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+  .hint { color: var(--ink-faint); font-size: 12px; margin-top: 10px; line-height: 1.7; }
+
+  /* ---------- status lists ---------- */
+  .kv { display: grid; grid-template-columns: 92px 1fr; gap: 8px 12px; font-size: 13px; }
+  .kv > span:nth-child(odd) { color: var(--ink-faint); }
+  .ok { color: var(--ok); font-weight: 600; }
+  .no { color: var(--warn); font-weight: 600; }
+  .bad { color: var(--err); font-weight: 600; }
+  a.link { color: #cf4a7e; text-decoration: none; border-bottom: 1.5px dotted #f0b6cc; }
+  a.link:hover { color: #ff5f97; border-bottom-color: #ff5f97; }
+
+  /* ---------- banner ---------- */
+  .banner {
+    position: relative; margin-bottom: 14px; padding: 14px 16px 14px 18px; border-radius: 14px;
+    background: linear-gradient(135deg, #fff6e9, #fff0f6 70%);
+    border: 1px solid #ffdfc2; color: #7a5a3c; font-size: 13px; line-height: 1.8;
+  }
+  .banner::before {
+    content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 4px;
+    border-radius: 4px; background: linear-gradient(180deg, #ffb84d, #ff7aa8);
+  }
+  .banner b { color: #d4497e; }
+  .banner ol { margin: 8px 0 0 20px; padding: 0; }
+  .banner li { margin: 2px 0; }
+
+  /* ---------- assets ---------- */
+  .preview-wrap {
+    margin-top: 14px; border-radius: 14px; padding: 12px; border: 1px dashed var(--pink-line);
+    background:
+      repeating-conic-gradient(#fdf4f8 0% 25%, #ffffff 0% 50%) 50% / 18px 18px;
+    display: none;
+  }
+  .preview-wrap img { display: block; width: 100%; image-rendering: pixelated; border-radius: 8px; }
+  .asset-bar-wrap { height: 8px; background: #fdeef4; border-radius: 999px; margin-top: 14px; overflow: hidden; }
+  .asset-bar-wrap > i { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, #ffb3cd, #a9e7d3); }
+  .asset-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--ink-faint); font-size: 12px; margin-top: 8px; }
+
+  /* ---------- logs ---------- */
   pre#logs {
-    max-height: 260px; overflow: auto; background: #14151a; border: 1px solid var(--line);
-    border-radius: 10px; padding: 12px; font: 12px/1.5 Consolas, monospace; color: #b9bfd0;
+    margin: 0; max-height: 300px; overflow: auto; border-radius: 14px;
+    background: #fbfaff; border: 1px solid var(--line); padding: 14px;
+    font: 12px/1.7 "Cascadia Mono", Consolas, "Courier New", monospace; color: #625b74;
     white-space: pre-wrap;
   }
-  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
-  .kv { display: grid; grid-template-columns: 96px 1fr; gap: 4px 12px; font-size: 13px; }
-  .kv span:nth-child(odd) { color: var(--muted); }
-  a.link { color: var(--accent); text-decoration: none; border-bottom: 1px dotted #6b5560; }
-  a.link:hover { color: #ffd0de; }
-  .banner {
-    margin-bottom: 12px; padding: 12px 14px; border-radius: 10px;
-    background: #2a2430; border: 1px solid #4a3d46; color: #f4d7e2; font-size: 13px;
-    line-height: 1.7;
-  }
-  .banner b { color: var(--accent); }
-  .banner ol { margin: 8px 0 0 18px; padding: 0; }
-  .ok { color: var(--ok); }
-  .no { color: var(--warn); }
-  .bad { color: var(--err); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #f3d7e4; border-radius: 10px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  footer { text-align: center; color: var(--ink-faint); font-size: 12px; margin-top: 26px; }
+  footer b { color: #d4497e; font-weight: 600; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>halobar 控制台</h1>
-    <span id="state" class="badge">读取中…</span>
-    <span id="source" class="badge">-</span>
+    <div class="logo">♪</div>
+    <h1>halobar <small>花再 PixelBar 歌词控制台</small></h1>
+    <div class="chips">
+      <span id="state" class="chip">读取中…</span>
+      <span id="source" class="chip">-</span>
+      <span id="ver" class="chip">v-</span>
+    </div>
   </header>
 
-  <section class="card" id="env-card">
-    <h2>环境与插件</h2>
-    <div id="env-banner" class="banner" hidden></div>
-    <div class="kv">
-      <span>网易云</span><span id="env-netease">检测中…</span>
-      <span>BetterNCM</span><span id="env-bncm">检测中…</span>
-      <span>精确进度</span><span id="env-sixk">检测中…</span>
-      <span>TempoHub</span><span id="env-tempo">检测中…</span>
-    </div>
-    <div class="row">
-      <button id="btn-shortcut">创建桌面快捷方式</button>
-      <span class="hint" id="shortcut-hint"></span>
-    </div>
-  </section>
+  <div class="grid">
+    <!-- 左列 -->
+    <div class="col">
+      <section class="card">
+        <h2><span class="ico">🎵</span>正在播放</h2>
+        <div id="track" class="track">未检测到播放</div>
+        <div id="artist" class="artist">—</div>
+        <div class="line" id="line">—</div>
+        <div class="progress"><i id="bar"></i></div>
+        <div class="meta"><span id="pos">0:00</span><span id="dur">0:00</span></div>
+        <div class="row">
+          <button id="btn-toggle" class="primary">暂停同步</button>
+          <button id="btn-restore" class="ghost">恢复屏幕</button>
+          <button id="btn-minus">−0.5s</button>
+          <button id="btn-plus">+0.5s</button>
+          <button id="btn-next">对齐下一句</button>
+        </div>
+        <div class="hint">微调只影响本地时钟；接入精确进度源时，偏差会在下一次采样被纠正。</div>
+      </section>
 
-  <section class="card">
-    <h2>正在播放</h2>
-    <div id="track" class="track">未检测到播放</div>
-    <div id="artist" class="artist">-</div>
-    <div class="line" id="line">—</div>
-    <div class="progress"><i id="bar"></i></div>
-    <div class="meta"><span id="pos">0:00</span><span id="dur">0:00</span></div>
-    <div class="row">
-      <button id="btn-toggle" class="primary">暂停同步</button>
-      <button id="btn-restore">恢复屏幕（停止跟随）</button>
-      <button id="btn-minus">−0.5s</button>
-      <button id="btn-plus">+0.5s</button>
-      <button id="btn-next">对齐到下一句</button>
-    </div>
-    <div class="hint">微调只影响本地时钟；使用 6K Labs 真实进度时，偏差会在下一次采样被纠正。</div>
-  </section>
+      <section class="card">
+        <h2><span class="ico">🖼️</span>自定义像素屏</h2>
+        <div class="grid-2">
+          <label class="field wide">图片 / GIF
+            <input type="file" id="asset-file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif">
+          </label>
+          <label class="field">适配
+            <select id="asset-fit">
+              <option value="contain">完整显示</option>
+              <option value="cover">铺满裁切</option>
+              <option value="stretch">拉伸填满</option>
+            </select>
+          </label>
+          <label class="field">阈值
+            <input type="range" id="asset-threshold" min="0" max="255" value="128">
+            <span id="asset-threshold-val">128</span>
+          </label>
+          <label class="field">反色 <input type="checkbox" id="asset-invert"></label>
+          <label class="field">抖动 <input type="checkbox" id="asset-dither"></label>
+          <label class="field">设为待机画面 <input type="checkbox" id="asset-standby" checked></label>
+          <label class="field">上传后暂停歌词 <input type="checkbox" id="asset-pause"></label>
+        </div>
+        <div class="row">
+          <button id="btn-upload" class="primary">上传到音箱</button>
+          <button id="btn-showasset">立即显示</button>
+        </div>
+        <div class="asset-bar-wrap"><i id="asset-bar"></i></div>
+        <div class="asset-meta"><span id="asset-info">尚未上传素材</span><span id="asset-progress"></span></div>
+        <div class="preview-wrap" id="preview-wrap"><img id="asset-preview" alt="预览"></div>
+        <div class="hint">256×32 单色、最多 8 帧、每帧 ≥100ms。上传会覆盖音箱里的自定义场景槽，官方原图需用 TempoHub / App 重新发送。</div>
+      </section>
 
-  <section class="card">
-    <h2>显示设置</h2>
-    <div class="grid">
-      <label class="field">对齐
-        <select id="align">
-          <option value="center">居中</option>
-          <option value="left">左对齐</option>
-          <option value="right">右对齐</option>
-          <option value="justify">两端对齐</option>
-        </select>
-      </label>
-      <label class="field">歌词动画
-        <select id="animation">
-          <option value="">关闭</option>
-          <option value="0">动画 1</option>
-          <option value="1">动画 2</option>
-          <option value="2">动画 3</option>
-          <option value="3">动画 4</option>
-          <option value="4">动画 5</option>
-        </select>
-      </label>
-      <label class="field">长句滚动
-        <input type="checkbox" id="scroll_long">
-      </label>
-      <label class="field">暂停后待机（秒）
-        <input type="number" id="standby" min="0" max="600" step="5">
-      </label>
+      <section class="card">
+        <h2><span class="ico">📝</span>日志</h2>
+        <pre id="logs">加载中…</pre>
+      </section>
     </div>
-    <div class="row">
-      <button id="btn-save">保存设置</button>
-    </div>
-    <div class="hint">长句滚动只对单包能装下的句子生效（约 16 汉字以内）；更长的句子会按时间切片。</div>
-  </section>
 
-  <section class="card">
-    <h2>自定义像素屏</h2>
-    <div class="grid">
-      <label class="field">图片 / GIF
-        <input type="file" id="asset-file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif">
-      </label>
-      <label class="field">适配
-        <select id="asset-fit">
-          <option value="contain">完整显示</option>
-          <option value="cover">铺满裁切</option>
-          <option value="stretch">拉伸填满</option>
-        </select>
-      </label>
-      <label class="field">阈值
-        <input type="range" id="asset-threshold" min="0" max="255" value="128">
-        <span id="asset-threshold-val">128</span>
-      </label>
-      <label class="field">反色 <input type="checkbox" id="asset-invert"></label>
-      <label class="field">抖动 <input type="checkbox" id="asset-dither"></label>
-      <label class="field">设为待机画面 <input type="checkbox" id="asset-standby" checked></label>
-      <label class="field">上传后暂停歌词 <input type="checkbox" id="asset-pause"></label>
-    </div>
-    <div class="row">
-      <button id="btn-upload" class="primary">上传到音箱</button>
-      <button id="btn-showasset">立即显示</button>
-    </div>
-    <div class="progress" style="margin-top:12px"><i id="asset-bar"></i></div>
-    <div class="meta"><span id="asset-info">尚未上传素材</span><span id="asset-progress"></span></div>
-    <img id="asset-preview" alt=""
-         style="margin-top:12px;max-width:100%;image-rendering:pixelated;border-radius:8px;border:1px solid var(--line);display:none">
-    <div class="hint">上传会覆盖音箱里的自定义场景槽（256×32 单色，最多 8 帧，每帧至少 100ms）；原内容需用 TempoHub / App 重新发送。</div>
-  </section>
+    <!-- 右列 -->
+    <div class="col">
+      <section class="card" id="env-card">
+        <h2><span class="ico">🌸</span>环境与插件</h2>
+        <div id="env-banner" class="banner" hidden></div>
+        <div class="kv">
+          <span>网易云</span><span id="env-netease">检测中…</span>
+          <span>BetterNCM</span><span id="env-bncm">检测中…</span>
+          <span>精确进度</span><span id="env-sixk">检测中…</span>
+          <span>TempoHub</span><span id="env-tempo">检测中…</span>
+        </div>
+        <div class="row">
+          <button id="btn-shortcut">创建桌面快捷方式</button>
+          <span class="hint" id="shortcut-hint"></span>
+        </div>
+      </section>
 
-  <section class="card">
-    <h2>设备</h2>
-    <div class="kv">
-      <span>连接</span><span id="conn">-</span>
-      <span>固件</span><span id="fw">-</span>
-      <span>进度源</span><span id="src2">-</span>
-      <span>歌词源</span><span id="lsrc">-</span>
-    </div>
-  </section>
+      <section class="card">
+        <h2><span class="ico">🎀</span>显示设置</h2>
+        <div class="grid-2">
+          <label class="field">对齐
+            <select id="align">
+              <option value="center">居中</option>
+              <option value="left">左对齐</option>
+              <option value="right">右对齐</option>
+              <option value="justify">两端对齐</option>
+            </select>
+          </label>
+          <label class="field">歌词动画
+            <select id="animation">
+              <option value="">关闭</option>
+              <option value="0">动画 1</option>
+              <option value="1">动画 2</option>
+              <option value="2">动画 3</option>
+              <option value="3">动画 4</option>
+              <option value="4">动画 5</option>
+            </select>
+          </label>
+          <label class="field">长句滚动 <input type="checkbox" id="scroll_long"></label>
+          <label class="field">暂停待机（秒） <input type="number" id="standby" min="0" max="600" step="5"></label>
+        </div>
+        <div class="row"><button id="btn-save" class="primary">保存设置</button></div>
+        <div class="hint">长句滚动只对单包能装下的句子生效（约 16 汉字以内）；更长的句子会按时间切片。</div>
+      </section>
 
-  <section class="card">
-    <h2>日志</h2>
-    <pre id="logs">加载中…</pre>
-  </section>
+      <section class="card">
+        <h2><span class="ico">🔌</span>设备</h2>
+        <div class="kv">
+          <span>连接</span><span id="conn">-</span>
+          <span>固件</span><span id="fw">-</span>
+          <span>进度源</span><span id="src2">-</span>
+          <span>歌词源</span><span id="lsrc">-</span>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer>halobar · 非官方工具 · 与漫步者 / 花再无关 · 用 <b>♪</b> 和像素点阵做的小玩具</footer>
 </div>
 
 <script>
@@ -217,28 +342,41 @@ const $ = (id) => document.getElementById(id);
 
 let paused = false;
 let lastState = '';
+let lastEnv = null;
+
+const STATE_TEXT = { idle: '空闲', following: '同步中', paused: '已暂停',
+  restored: '已恢复屏幕', 'waiting-device': '等待设备', error: '错误', connecting: '连接中' };
 
 async function refresh() {
   try {
     const s = await api('/api/status');
     lastState = s.state || '';
-    $('state').textContent = ({ idle: '空闲', following: '同步中', paused: '已暂停',
-      restored: '已恢复屏幕', 'waiting-device': '等待设备', error: '错误',
-      connecting: '连接中' })[s.state] || s.state;
-    $('state').className = 'badge ' + (s.connected ? (s.state === 'following' ? 'ok' : 'warn') : 'err');
+    $('state').textContent = STATE_TEXT[s.state] || s.state || '-';
+    $('state').className = 'chip ' + (s.connected ? (s.state === 'following' ? 'ok' : 'warn') : 'err');
     $('source').textContent = s.source === 'none' ? '无进度源' : s.source;
+    $('source').className = 'chip ' + (s.source === '6k-labs' ? 'ok' : 'warn');
+    $('ver').textContent = 'v' + (s.version || '-');
     $('track').textContent = s.track || '未检测到播放';
-    $('artist').textContent = s.artist || '-';
+    $('artist').textContent = s.artist || '—';
     $('line').textContent = s.line || '—';
     $('pos').textContent = fmt(s.position);
     $('dur').textContent = fmt(s.duration);
     const pct = (s.position && s.duration) ? Math.min(100, s.position / s.duration * 100) : 0;
     $('bar').style.width = pct + '%';
     $('conn').textContent = s.connected ? '已连接' : '未连接';
+    $('conn').className = s.connected ? 'ok' : 'bad';
     $('fw').textContent = s.firmware || '-';
     $('src2').textContent = s.source || '-';
     $('lsrc').textContent = s.lyrics_source || '-';
-    renderEnvironment(s.environment);
+    const canToggle = ['following', 'paused', 'restored'].includes(s.state);
+    $('btn-toggle').disabled = !canToggle;
+    $('btn-toggle').textContent = (s.state === 'paused' || s.state === 'restored') ? '继续同步' : '暂停同步';
+    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
+      $('align').value = s.settings.align;
+      $('animation').value = s.settings.animation === null ? '' : String(s.settings.animation);
+      $('scroll_long').checked = !!s.settings.scroll_long_lines;
+      $('standby').value = s.settings.standby_after;
+    }
     const uploadPct = Math.round((s.upload_progress || 0) * 100);
     $('asset-bar').style.width = uploadPct + '%';
     if (s.upload_state === 'uploading' || s.upload_state === 'queued') {
@@ -249,18 +387,10 @@ async function refresh() {
       $('asset-info').textContent = `${s.asset_name} · ${s.asset_frames} 帧 · 场景 ${s.asset_category}/${s.asset_option}`;
       $('asset-progress').textContent = '上传完成';
     }
-    const canToggle = ['following', 'paused', 'restored'].includes(s.state);
-    $('btn-toggle').disabled = !canToggle;
-    $('btn-toggle').textContent = (s.state === 'paused' || s.state === 'restored') ? '继续同步' : '暂停同步';
-    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
-      $('align').value = s.settings.align;
-      $('animation').value = s.settings.animation === null ? '' : String(s.settings.animation);
-      $('scroll_long').checked = !!s.settings.scroll_long_lines;
-      $('standby').value = s.settings.standby_after;
-    }
+    renderEnvironment(s.environment);
   } catch (e) {
     $('state').textContent = '控制台连接失败';
-    $('state').className = 'badge err';
+    $('state').className = 'chip err';
   }
 }
 
@@ -291,19 +421,13 @@ async function refreshLogs() {
   } catch (e) { /* ignore */ }
 }
 
-$('btn-toggle').onclick = () => command(lastState === 'paused' || lastState === 'restored' ? 'resume' : 'pause');
-$('btn-restore').onclick = () => command('restore');
-$('btn-minus').onclick = () => command('nudge', -0.5);
-$('btn-plus').onclick = () => command('nudge', 0.5);
-$('btn-next').onclick = () => command('next_line');
-$('btn-save').onclick = saveSettings;
-
 // ---------------------------------------------------------------- 环境与插件
 function renderEnvironment(env) {
   if (!env || !env.links) return;
+  lastEnv = env;
   const links = env.links;
   $('env-netease').innerHTML = env.netease_exe
-    ? `<span class="ok">已检测</span> <span style="color:var(--muted)">${env.netease_path}</span>`
+    ? `<span class="ok">已检测</span> <span style="color:var(--ink-faint)">${env.netease_path}</span>`
     : `<span class="bad">未检测到官网版</span> · <a class="link" href="${links.netease}" target="_blank">下载</a>`;
   $('env-bncm').innerHTML = env.betterncm
     ? '<span class="ok">已安装</span>'
@@ -314,16 +438,16 @@ function renderEnvironment(env) {
         ? `<span class="no">未连接（网易云没开，或插件未加载）</span> · <a class="link" href="${links.sixk}" target="_blank">检查安装</a>`
         : `<span class="no">未安装（当前为估算进度）</span> · <a class="link" href="${links.sixk}" target="_blank">安装 6K Labs</a>`);
   $('env-tempo').innerHTML = env.tempo_hub
-    ? '<span class="no">正在运行，可能与本程序抢设备，建议退出</span>'
+    ? '<span class="no">正在运行，可能抢设备，建议退出</span>'
     : '<span class="ok">未运行</span>';
 
   const banner = $('env-banner');
   if (!env.sixk) {
     banner.hidden = false;
     banner.innerHTML =
-      '<b>想要「拖动进度条也不漂」的精准歌词？</b>需要给官网版网易云装上插件链（约 5 分钟）：' +
+      '<b>想让「拖动进度条也不漂」吗？</b>给官网版网易云装上插件链（约 5 分钟）：' +
       `<ol>
-         <li>确认用的是<a class="link" href="${links.netease}" target="_blank">官网安装版</a>（Store 版无法注入）</li>
+         <li>确认用的是 <a class="link" href="${links.netease}" target="_blank">官网安装版</a>（Store 版无法注入）</li>
          <li>安装 <a class="link" href="${links.betterncm}" target="_blank">BetterNCM</a>（选择网易云安装目录）</li>
          <li>把 <a class="link" href="${links.inflink}" target="_blank">InfLink-rs</a> 的 .plugin 放进插件目录</li>
          <li>把 <a class="link" href="${links.sixk}" target="_blank">6K Labs</a> 装进插件目录，重启网易云</li>
@@ -333,11 +457,16 @@ function renderEnvironment(env) {
   }
 }
 
+$('btn-toggle').onclick = () => command(lastState === 'paused' || lastState === 'restored' ? 'resume' : 'pause');
+$('btn-restore').onclick = () => command('restore');
+$('btn-minus').onclick = () => command('nudge', -0.5);
+$('btn-plus').onclick = () => command('nudge', 0.5);
+$('btn-next').onclick = () => command('next_line');
+$('btn-save').onclick = saveSettings;
+
 $('btn-shortcut').onclick = async () => {
   const result = await api('/api/shortcut', { method: 'POST', body: '{}' });
-  $('shortcut-hint').textContent = result.error
-    ? '创建失败：' + result.error
-    : '已创建：' + result.path;
+  $('shortcut-hint').textContent = result.error ? '创建失败：' + result.error : '已创建：' + result.path;
 };
 
 // ---------------------------------------------------------------- 素材工作台
@@ -375,9 +504,9 @@ $('btn-upload').onclick = async () => {
     } else {
       lastAsset = result;
       $('asset-preview').src = result.preview;
-      $('asset-preview').style.display = 'block';
+      $('preview-wrap').style.display = 'block';
       $('asset-info').textContent = `${file.name} · ${result.frames} 帧 · ${(result.bytes / 1024).toFixed(1)} KB`;
-      $('asset-progress').textContent = result.animated ? '已提交上传（动画）' : '已提交上传';
+      $('asset-progress').textContent = result.animated ? '已提交（动画）' : '已提交';
     }
   } catch (e) {
     $('asset-progress').textContent = '上传请求失败';
@@ -388,9 +517,7 @@ $('btn-upload').onclick = async () => {
 };
 
 $('btn-showasset').onclick = async () => {
-  const body = lastAsset
-    ? { category: lastAsset.category, option: lastAsset.option }
-    : {};
+  const body = lastAsset ? { category: lastAsset.category, option: lastAsset.option } : {};
   const result = await api('/api/asset/display', { method: 'POST', body: JSON.stringify(body) });
   if (result.error) alert(result.error);
   refresh();
