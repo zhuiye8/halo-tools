@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 import time
 import webbrowser
@@ -244,6 +245,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # A windowed build has no console streams at all; printing would raise.
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
+
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv:
+        # Double-clicking the exe (or a desktop shortcut) should start the tray app.
+        argv = ["run"]
+
     args = build_parser().parse_args(argv)
     _setup_logging(args.verbose)
     try:

@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -10,7 +10,6 @@ venv/
 # Build output
 dist/
 build/
-*.spec
 
 # Local research clones / scratch (not part of the project)
 repo/
@@ -28,3 +27,5 @@ token.txt
 # OS
 Thumbs.db
 .DS_Store
+exe_token.txt
+/halobar.spec

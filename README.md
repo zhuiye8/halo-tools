@@ -30,9 +30,9 @@ halobar 是给「漫步者 / 花再 Halo PixelBar」写的一个 Windows 小工�
 
 ## 下载
 
-> 首个版本还在打包，完成后会放在 [Releases](https://github.com/zhuiye8/halo-tools/releases)。在那之前请从源码运行，见文末「开发」。
+从 [Releases](https://github.com/zhuiye8/halo-tools/releases/latest) 下载 `halobar-v0.1.0-win64.zip`，大约 14 MB。
 
-发布包是免安装的 zip：解压到任意目录，双击 `halobar.exe` 就可以了。不需要装 Python，也不需要管理员权限。桌面上的快捷方式可以在控制台里一键创建。
+解压到任意目录（支持中文路径），双击 `halobar.exe` 就可以了。不需要装 Python，也不需要管理员权限。桌面上的快捷方式可以在控制台里一键创建，或者运行包内的 `create-shortcut.cmd`。
 
 第一次运行时 Windows 可能提示"未知发布者"，因为程序没有代码签名；点"更多信息 → 仍要运行"即可。如果杀软拦截，把 `halobar.exe` 加白名单。
 

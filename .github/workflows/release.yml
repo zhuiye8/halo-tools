@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[media,dev]" pyinstaller
+
+      - name: Check tag matches package version
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path halobar/__init__.py -Pattern '__version__ = "([^"]+)"').Matches[0].Groups[1].Value
+          Write-Host "package version: $version"
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $tag = $env:GITHUB_REF -replace '^refs/tags/v', ''
+            if ($tag -ne $version) { throw "tag v$tag does not match __version__ $version" }
+          }
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Build portable package
+        shell: pwsh
+        run: ./scripts/build.ps1 -SkipTests
+
+      - name: List artefacts
+        shell: pwsh
+        run: Get-ChildItem dist | Select-Object Name, Length
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
