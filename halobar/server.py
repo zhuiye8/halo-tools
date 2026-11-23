@@ -96,7 +96,7 @@ class ConsoleServer:
 
     # -------------------------------------------------------------------- helpers
     def status_payload(self) -> dict:
-        from . import __version__
+        from . import __version__, buildinfo
 
         status = asdict(self.service.status())
         config = self.service.config
@@ -108,6 +108,7 @@ class ConsoleServer:
             "standby_scene": config.standby_scene,
         }
         status["version"] = __version__
+        status["build"] = buildinfo.load()
         status["firmware"] = status.get("firmware") or "-"
         status["environment"] = (
             self.environment.get().as_dict() if self.environment is not None else None)

@@ -323,7 +323,7 @@
     </div>
   </div>
 
-  <footer>halobar · 非官方工具 · 与漫步者 / 花再无关 · 用 <b>♪</b> 和像素点阵做的小玩具</footer>
+  <footer>halobar · 非官方工具 · 与漫步者 / 花再无关 · <span id="buildline">dev build</span></footer>
 </div>
 
 <script>
@@ -356,6 +356,13 @@ async function refresh() {
     $('source').textContent = s.source === 'none' ? '无进度源' : s.source;
     $('source').className = 'chip ' + (s.source === '6k-labs' ? 'ok' : 'warn');
     $('ver').textContent = 'v' + (s.version || '-');
+    const build = s.build || {};
+    $('ver').title = build.commit
+      ? `commit ${build.commit} · built ${build.built_at} · python ${build.python || '?'}`
+      : '源码运行（无 build-info）';
+    $('buildline').textContent = build.commit
+      ? `${build.commit} · ${(build.built_at || '').slice(0, 16).replace('T', ' ')}`
+      : 'source checkout';
     $('track').textContent = s.track || '未检测到播放';
     $('artist').textContent = s.artist || '—';
     $('line').textContent = s.line || '—';

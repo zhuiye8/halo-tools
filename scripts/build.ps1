@@ -36,6 +36,23 @@ Copy-Item 'packaging/create-shortcut.cmd' $out -Force
 Copy-Item 'packaging/create-shortcut.ps1' $out -Force
 Copy-Item 'LICENSE' (Join-Path $out 'LICENSE.txt') -Force
 
+# Build metadata: lets a downloaded package be traced back to a commit.
+$commit = (git rev-parse --short HEAD 2>$null)
+if (-not $commit) { $commit = 'unknown' }
+$pythonVersion = (python -c "import sys; print(sys.version.split()[0])")
+$pyinstallerVersion = (python -m PyInstaller --version)
+$buildInfo = [ordered]@{
+    name        = 'halobar'
+    version     = $Version
+    commit      = $commit.Trim()
+    built_at    = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
+    python      = $pythonVersion.Trim()
+    pyinstaller = $pyinstallerVersion.Trim()
+    platform    = 'windows-x64'
+} | ConvertTo-Json
+[IO.File]::WriteAllText((Join-Path $out 'build-info.json'), $buildInfo, [Text.UTF8Encoding]::new($false))
+Write-Host "  build-info.json: commit $commit, python $pythonVersion"
+
 if (-not $SkipZip) {
     $zip = Join-Path $root "dist/halobar-v$version-win64.zip"
     if (Test-Path $zip) { Remove-Item $zip -Force }

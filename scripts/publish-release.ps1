@@ -8,7 +8,8 @@
 #     different hash; we therefore read the asset digest from the API.
 param(
     [string]$Tag = 'v0.1.0',
-    [string]$Zip = ''
+    [string]$Zip = '',
+    [switch]$ReplaceAsset
 )
 
 $ErrorActionPreference = 'Stop'
@@ -50,6 +51,11 @@ if (-not $release) {
 }
 
 $asset = $release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
+if ($asset -and $ReplaceAsset) {
+    Write-Host "deleting existing asset $assetName ..."
+    Invoke-RestMethod "$repoApi/releases/assets/$($asset.id)" -Method Delete -Headers $headers -TimeoutSec 30 | Out-Null
+    $asset = $null
+}
 if (-not $asset) {
     $uploadUrl = $release.upload_url -replace '\{.*\}$', ''
     Write-Host 'uploading asset...'
