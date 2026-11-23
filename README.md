@@ -11,7 +11,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-8f8bff)
 ![Python](https://img.shields.io/badge/python-3.12-6fb7ff)
 
-<img src="docs/console-light.png" width="780" alt="控制台截图">
+<img src="docs/console-redesign.png" width="780" alt="控制台截图">
 
 </div>
 
