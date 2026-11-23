@@ -94,26 +94,48 @@ class RecordingScreen(FakeScreen):
         return super().show_text(text, **kwargs)
 
 
-def test_long_line_uses_device_scroll():
+def test_long_line_is_paged_by_default():
     screen = RecordingScreen()
-    engine = LyricsEngine(screen, EngineConfig(scroll_long_lines=True))
-    long_line = "这是一句特别特别长的歌词用来测试滚动效果"  # 20 CJK chars == 60 bytes > 48
+    engine = LyricsEngine(screen, EngineConfig())  # page mode, page_units=32
+    long_line = "这是一句特别特别长的歌词用来测试分页效果"  # 20 CJK == 40 units / 60 bytes
     engine.set_lyrics(Lyrics([LyricLine(0.0, "短句", 1.0),
                               LyricLine(1.0, long_line, 5.0)]))
 
     engine.tick(Playback(title="t", artist="a", playing=True, position=0.5))
     assert screen.calls[-1]["scroll"] is None
 
-    engine.tick(Playback(title="t", artist="a", playing=True, position=2.0))
-    # 60 bytes exceed one packet, so it is segmented rather than scrolled.
+    # 20 CJK chars -> two pages (16 + 4), shown as static text, not a marquee.
+    engine.tick(Playback(title="t", artist="a", playing=True, position=1.5))
+    first_page = screen.calls[-1]["text"]
     assert screen.calls[-1]["scroll"] is None
-    assert len(screen.calls[-1]["text"]) <= 16
+    assert first_page == long_line[:16]
+    assert screen.calls[-1]["animation"] == 2  # fade between pages
 
-    medium = "一二三四五六七八九十一二三"  # 13 CJK == 26 units > 14, 39 bytes
+    engine.tick(Playback(title="t", artist="a", playing=True, position=4.5))
+    assert screen.calls[-1]["text"] == long_line[16:]
+
+
+def test_scroll_mode_prepends_lead_spaces():
+    screen = RecordingScreen()
+    engine = LyricsEngine(screen, EngineConfig(line_mode="scroll", scroll_lead_spaces=2))
+    medium = "一二三四五六七八九十一二三"  # 13 CJK == 39 bytes, fits one packet
     engine.set_lyrics(Lyrics([LyricLine(1.0, medium, 5.0)]))
+    engine.tick(Playback(title="t", artist="a", playing=True, position=2.0))  # registers the track
     engine.tick(Playback(title="t", artist="a", playing=True, position=2.0))
     assert screen.calls[-1]["scroll"] is not None
-    assert screen.calls[-1]["text"] == medium
+    assert screen.calls[-1]["text"] == "  " + medium
+
+
+def test_first_page_mode_never_switches():
+    screen = RecordingScreen()
+    engine = LyricsEngine(screen, EngineConfig(line_mode="first"))
+    long_line = "这是一句特别特别长的歌词用来测试分页效果"
+    engine.set_lyrics(Lyrics([LyricLine(0.0, long_line, 5.0)]))
+    engine.tick(Playback(title="t", artist="a", playing=True, position=0.5))
+    first = screen.calls[-1]["text"]
+    engine.tick(Playback(title="t", artist="a", playing=True, position=4.5))
+    assert screen.calls[-1]["text"] == first
+    assert first == long_line[:16]
 
 
 def test_interlude_clears_then_falls_back_to_scene():

@@ -170,16 +170,28 @@
   .banner li { margin: 2px 0; }
 
   /* ---------- assets ---------- */
-  .preview-wrap {
-    margin-top: 14px; border-radius: 14px; padding: 12px; border: 1px dashed var(--pink-line);
-    background:
-      repeating-conic-gradient(#fdf4f8 0% 25%, #ffffff 0% 50%) 50% / 18px 18px;
-    display: none;
+  .asset-editor { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 16px; }
+  @media (max-width: 780px) { .asset-editor { grid-template-columns: minmax(0, 1fr); } }
+  .asset-preview-panel { min-width: 0; }
+  .asset-controls { min-width: 0; }
+  .screen-frame {
+    position: relative; padding: 14px; border-radius: 16px;
+    background: linear-gradient(180deg, #232030, #17151f);
+    box-shadow: inset 0 0 0 1px #3c364d, 0 12px 26px rgba(60, 40, 80, .22);
   }
-  .preview-wrap img { display: block; width: 100%; image-rendering: pixelated; border-radius: 8px; }
+  .screen-frame canvas {
+    display: block; width: 100%; height: auto; image-rendering: pixelated;
+    border-radius: 8px; background: #0b0a10; cursor: grab;
+  }
+  .screen-frame canvas.dragging { cursor: grabbing; }
+  .screen-empty {
+    position: absolute; inset: 14px; display: grid; place-items: center;
+    color: #8f88a0; font-size: 13px; border: 1px dashed #4c4560; border-radius: 8px;
+    background: rgba(11, 10, 16, .55);
+  }
   .asset-bar-wrap { height: 8px; background: #fdeef4; border-radius: 999px; margin-top: 14px; overflow: hidden; }
   .asset-bar-wrap > i { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, #ffb3cd, #a9e7d3); }
-  .asset-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--ink-faint); font-size: 12px; margin-top: 8px; }
+  .asset-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--ink-faint); font-size: 12px; margin-top: 10px; }
 
   /* ---------- logs ---------- */
   pre#logs {
@@ -230,34 +242,61 @@
 
       <section class="card">
         <h2><span class="ico">🖼️</span>自定义像素屏</h2>
-        <div class="grid-2">
-          <label class="field wide">图片 / GIF
-            <input type="file" id="asset-file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif">
-          </label>
-          <label class="field">适配
-            <select id="asset-fit">
-              <option value="contain">完整显示</option>
-              <option value="cover">铺满裁切</option>
-              <option value="stretch">拉伸填满</option>
-            </select>
-          </label>
-          <label class="field">阈值
-            <input type="range" id="asset-threshold" min="0" max="255" value="128">
-            <span id="asset-threshold-val">128</span>
-          </label>
-          <label class="field">反色 <input type="checkbox" id="asset-invert"></label>
-          <label class="field">抖动 <input type="checkbox" id="asset-dither"></label>
-          <label class="field">设为待机画面 <input type="checkbox" id="asset-standby" checked></label>
-          <label class="field">上传后暂停歌词 <input type="checkbox" id="asset-pause"></label>
+        <div class="asset-editor">
+          <div class="asset-preview-panel">
+            <div class="screen-frame">
+              <canvas id="asset-canvas" width="1024" height="128"></canvas>
+              <div class="screen-empty" id="asset-empty">选择一张图片开始编辑</div>
+            </div>
+            <div class="asset-meta">
+              <span id="asset-info">尚未选择图片</span>
+              <span id="asset-progress"></span>
+            </div>
+            <div class="asset-bar-wrap"><i id="asset-bar"></i></div>
+            <div class="hint">拖动预览可平移，滚轮缩放。屏幕上「亮点」就是黑色以外的部分——先在这里调到满意，再上传。</div>
+          </div>
+          <div class="asset-controls">
+            <label class="field wide">图片 / GIF
+              <input type="file" id="asset-file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif">
+            </label>
+            <div class="grid-2">
+              <label class="field">适配
+                <select id="asset-fit">
+                  <option value="contain">完整显示</option>
+                  <option value="cover">铺满裁切</option>
+                  <option value="stretch">拉伸填满</option>
+                </select>
+              </label>
+              <label class="field">缩放
+                <input type="range" id="asset-zoom" min="0.4" max="3.5" step="0.05" value="1">
+                <span id="asset-zoom-val">100%</span>
+              </label>
+              <label class="field">阈值
+                <input type="range" id="asset-threshold" min="0" max="255" value="128">
+                <span id="asset-threshold-val">128</span>
+              </label>
+              <label class="field">亮度
+                <input type="range" id="asset-brightness" min="-100" max="100" value="0">
+                <span id="asset-brightness-val">0</span>
+              </label>
+              <label class="field">对比度
+                <input type="range" id="asset-contrast" min="0.2" max="3" step="0.05" value="1">
+                <span id="asset-contrast-val">1.0</span>
+              </label>
+              <label class="field">反色 <input type="checkbox" id="asset-invert"></label>
+              <label class="field">抖动 <input type="checkbox" id="asset-dither"></label>
+              <label class="field">设为待机画面 <input type="checkbox" id="asset-standby" checked></label>
+              <label class="field">上传后暂停歌词 <input type="checkbox" id="asset-pause"></label>
+            </div>
+            <div class="row">
+              <button id="btn-upload" class="primary">上传到音箱</button>
+              <button id="btn-showasset">立即显示</button>
+              <button id="btn-reset-view">重置视图</button>
+              <button id="btn-sample" class="ghost">载入示例图</button>
+            </div>
+          </div>
         </div>
-        <div class="row">
-          <button id="btn-upload" class="primary">上传到音箱</button>
-          <button id="btn-showasset">立即显示</button>
-        </div>
-        <div class="asset-bar-wrap"><i id="asset-bar"></i></div>
-        <div class="asset-meta"><span id="asset-info">尚未上传素材</span><span id="asset-progress"></span></div>
-        <div class="preview-wrap" id="preview-wrap"><img id="asset-preview" alt="预览"></div>
-        <div class="hint">256×32 单色、最多 8 帧、每帧 ≥100ms。上传会覆盖音箱里的自定义场景槽，官方原图需用 TempoHub / App 重新发送。</div>
+        <div class="hint">256×32 单色、最多 8 帧、每帧 ≥100ms。GIF 预览为首帧，动画请上传后在音箱上查看。上传会覆盖音箱里的自定义场景槽，官方原图需用 TempoHub / App 重新发送。</div>
       </section>
 
       <section class="card">
@@ -305,6 +344,13 @@
             </select>
           </label>
           <label class="field">长句滚动 <input type="checkbox" id="scroll_long"></label>
+          <label class="field">长句处理
+            <select id="line-mode">
+              <option value="page">分页淡入</option>
+              <option value="scroll">横向滚动</option>
+              <option value="first">只显示首屏</option>
+            </select>
+          </label>
           <label class="field">暂停待机（秒） <input type="number" id="standby" min="0" max="600" step="5"></label>
         </div>
         <div class="row"><button id="btn-save" class="primary">保存设置</button></div>
@@ -382,6 +428,7 @@ async function refresh() {
       $('align').value = s.settings.align;
       $('animation').value = s.settings.animation === null ? '' : String(s.settings.animation);
       $('scroll_long').checked = !!s.settings.scroll_long_lines;
+      $('line-mode').value = s.settings.line_mode || 'page';
       $('standby').value = s.settings.standby_after;
     }
     const uploadPct = Math.round((s.upload_progress || 0) * 100);
@@ -414,6 +461,7 @@ async function saveSettings() {
       align: $('align').value,
       animation: animation === '' ? null : Number(animation),
       scroll_long_lines: $('scroll_long').checked,
+      line_mode: $('line-mode').value,
       standby_after: Number($('standby').value),
     }),
   });
@@ -477,9 +525,227 @@ $('btn-shortcut').onclick = async () => {
 };
 
 // ---------------------------------------------------------------- 素材工作台
+// 在浏览器里复刻服务端的处理流程（适配 → 缩放/平移 → 亮度/对比度 → 反色 → 抖动），
+// 所以调整参数时预览是即时的，上传只是把同一组参数交给服务端重算一遍。
+const SCREEN_W = 256, SCREEN_H = 32;
 let lastAsset = null;
+let sourceImage = null;
+let view = { zoom: 1, offsetX: 0, offsetY: 0, dragging: false, startX: 0, startY: 0 };
 
-$('asset-threshold').oninput = () => { $('asset-threshold-val').textContent = $('asset-threshold').value; };
+const fittedCanvas = document.createElement('canvas');
+fittedCanvas.width = SCREEN_W;
+fittedCanvas.height = SCREEN_H;
+const finalCanvas = document.createElement('canvas');
+finalCanvas.width = SCREEN_W;
+finalCanvas.height = SCREEN_H;
+
+function currentOptions() {
+  return {
+    fit: $('asset-fit').value,
+    zoom: Number($('asset-zoom').value),
+    offset_x: view.offsetX,
+    offset_y: view.offsetY,
+    threshold: Number($('asset-threshold').value),
+    brightness: Number($('asset-brightness').value),
+    contrast: Number($('asset-contrast').value),
+    invert: $('asset-invert').checked,
+    dither: $('asset-dither').checked,
+  };
+}
+
+function fitSource(image) {
+  const fctx = fittedCanvas.getContext('2d', { willReadFrequently: true });
+  fctx.fillStyle = '#000';
+  fctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+  const fit = $('asset-fit').value;
+  let w, h;
+  if (fit === 'cover') {
+    const scale = Math.max(SCREEN_W / image.width, SCREEN_H / image.height);
+    w = image.width * scale; h = image.height * scale;
+  } else if (fit === 'stretch') {
+    w = SCREEN_W; h = SCREEN_H;
+  } else {
+    const scale = Math.min(SCREEN_W / image.width, SCREEN_H / image.height);
+    w = image.width * scale; h = image.height * scale;
+  }
+  fctx.imageSmoothingEnabled = true;
+  fctx.drawImage(image, (SCREEN_W - w) / 2, (SCREEN_H - h) / 2, w, h);
+  return fctx.getImageData(0, 0, SCREEN_W, SCREEN_H);
+}
+
+function renderPreview() {
+  if (!sourceImage) return;
+  const opts = currentOptions();
+  const base = fitSource(sourceImage);
+
+  const zoom = opts.zoom;
+  const drawW = SCREEN_W * zoom, drawH = SCREEN_H * zoom;
+  const x = (SCREEN_W - drawW) / 2 + opts.offset_x * SCREEN_W;
+  const y = (SCREEN_H - drawH) / 2 + opts.offset_y * SCREEN_H;
+
+  const fctx = finalCanvas.getContext('2d', { willReadFrequently: true });
+  // 先把 base 画到临时画布，再按缩放/位移重采样
+  const tmp = document.createElement('canvas');
+  tmp.width = SCREEN_W; tmp.height = SCREEN_H;
+  tmp.getContext('2d').putImageData(base, 0, 0);
+
+  fctx.fillStyle = '#000';
+  fctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+  fctx.imageSmoothingEnabled = true;
+  fctx.drawImage(tmp, x, y, drawW, drawH);
+  const image = fctx.getImageData(0, 0, SCREEN_W, SCREEN_H);
+
+  const gray = new Float32Array(SCREEN_W * SCREEN_H);
+  for (let i = 0; i < gray.length; i++) {
+    const p = i * 4;
+    gray[i] = 0.299 * image.data[p] + 0.587 * image.data[p + 1] + 0.114 * image.data[p + 2];
+  }
+  for (let i = 0; i < gray.length; i++) {
+    let v = (gray[i] - 128) * opts.contrast + 128 + opts.brightness;
+    if (opts.invert) v = 255 - v;
+    gray[i] = Math.max(0, Math.min(255, v));
+  }
+  const out = new Uint8ClampedArray(SCREEN_W * SCREEN_H * 4);
+  if (opts.dither) {
+    floydSteinberg(gray, opts.threshold);
+  }
+  for (let i = 0; i < gray.length; i++) {
+    const on = opts.dither ? gray[i] >= 128 : gray[i] >= opts.threshold;
+    const p = i * 4;
+    out[p] = out[p + 1] = out[p + 2] = on ? 255 : 0;
+    out[p + 3] = 255;
+  }
+  const outImage = new ImageData(out, SCREEN_W, SCREEN_H);
+  const viewCanvas = $('asset-canvas');
+  const vctx = viewCanvas.getContext('2d');
+  vctx.imageSmoothingEnabled = false;
+  const tmpOut = document.createElement('canvas');
+  tmpOut.width = SCREEN_W; tmpOut.height = SCREEN_H;
+  tmpOut.getContext('2d').putImageData(outImage, 0, 0);
+  vctx.drawImage(tmpOut, 0, 0, viewCanvas.width, viewCanvas.height);
+  $('asset-empty').style.display = 'none';
+}
+
+function floydSteinberg(values, threshold) {
+  const w = SCREEN_W, h = SCREEN_H;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const old = values[i];
+      const nw = old >= threshold ? 255 : 0;
+      const err = old - nw;
+      values[i] = nw;
+      if (x + 1 < w) values[i + 1] += err * 7 / 16;
+      if (y + 1 < h) {
+        if (x > 0) values[i + w - 1] += err * 3 / 16;
+        values[i + w] += err * 5 / 16;
+        if (x + 1 < w) values[i + w + 1] += err / 16;
+      }
+    }
+  }
+}
+
+function resetView() {
+  view.zoom = 1; view.offsetX = 0; view.offsetY = 0;
+  $('asset-zoom').value = 1;
+  $('asset-zoom-val').textContent = '100%';
+  renderPreview();
+}
+
+$('asset-file').onchange = async () => {
+  const file = $('asset-file').files[0];
+  if (!file) return;
+  try {
+    sourceImage = await createImageBitmap(file);
+  } catch (e) {
+    $('asset-info').textContent = '无法读取这张图片';
+    return;
+  }
+  $('asset-info').textContent = `${file.name} · ${sourceImage.width}×${sourceImage.height}`;
+  $('asset-progress').textContent = '';
+  resetView();
+};
+
+['asset-fit', 'asset-threshold', 'asset-brightness', 'asset-contrast', 'asset-invert', 'asset-dither']
+  .forEach((id) => {
+    const el = $(id);
+    el.addEventListener('input', () => {
+      if (id === 'asset-threshold') $('asset-threshold-val').textContent = el.value;
+      if (id === 'asset-brightness') $('asset-brightness-val').textContent = el.value;
+      if (id === 'asset-contrast') $('asset-contrast-val').textContent = Number(el.value).toFixed(1);
+      renderPreview();
+    });
+    el.addEventListener('change', renderPreview);
+  });
+
+$('asset-zoom').addEventListener('input', () => {
+  view.zoom = Number($('asset-zoom').value);
+  $('asset-zoom-val').textContent = Math.round(view.zoom * 100) + '%';
+  renderPreview();
+});
+
+const viewCanvasEl = $('asset-canvas');
+viewCanvasEl.addEventListener('pointerdown', (e) => {
+  if (!sourceImage) return;
+  view.dragging = true;
+  view.startX = e.clientX; view.startY = e.clientY;
+  viewCanvasEl.classList.add('dragging');
+  viewCanvasEl.setPointerCapture(e.pointerId);
+});
+viewCanvasEl.addEventListener('pointermove', (e) => {
+  if (!view.dragging) return;
+  const rect = viewCanvasEl.getBoundingClientRect();
+  view.offsetX += (e.clientX - view.startX) / rect.width;
+  view.offsetY += (e.clientY - view.startY) / rect.height;
+  view.offsetX = Math.max(-1, Math.min(1, view.offsetX));
+  view.offsetY = Math.max(-1, Math.min(1, view.offsetY));
+  view.startX = e.clientX; view.startY = e.clientY;
+  renderPreview();
+});
+viewCanvasEl.addEventListener('pointerup', (e) => {
+  view.dragging = false;
+  viewCanvasEl.classList.remove('dragging');
+  viewCanvasEl.releasePointerCapture(e.pointerId);
+});
+viewCanvasEl.addEventListener('wheel', (e) => {
+  if (!sourceImage) return;
+  e.preventDefault();
+  view.zoom = Math.max(0.4, Math.min(3.5, view.zoom + (e.deltaY < 0 ? 0.1 : -0.1)));
+  $('asset-zoom').value = view.zoom;
+  $('asset-zoom-val').textContent = Math.round(view.zoom * 100) + '%';
+  renderPreview();
+}, { passive: false });
+
+$('btn-reset-view').onclick = resetView;
+
+// A built-in sample so the editor can be tried (and demoed) without a file.
+function loadSample() {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 32;          // 1:1 with the device screen
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 256, 32);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, 255, 31);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 22px "Microsoft YaHei UI", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('HALO', 128, 16);
+  ctx.font = '10px "Microsoft YaHei UI", sans-serif';
+  ctx.fillText('♪', 14, 10);
+  ctx.fillText('♪', 242, 22);
+  createImageBitmap(c).then((bitmap) => {
+    sourceImage = bitmap;
+    $('asset-info').textContent = '示例图 · 256×32';
+    $('asset-progress').textContent = '';
+    resetView();
+  });
+}
+
+$('btn-sample').onclick = loadSample;
+if (location.hash === '#demo') loadSample();
 
 $('btn-upload').onclick = async () => {
   const file = $('asset-file').files[0];
@@ -490,6 +756,7 @@ $('btn-upload').onclick = async () => {
   for (let i = 0; i < bytes.length; i += 0x8000) {
     binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
   }
+  const opts = currentOptions();
   $('btn-upload').disabled = true;
   $('asset-progress').textContent = '处理中…';
   try {
@@ -498,10 +765,15 @@ $('btn-upload').onclick = async () => {
       body: JSON.stringify({
         filename: file.name,
         data: btoa(binary),
-        fit: $('asset-fit').value,
-        threshold: Number($('asset-threshold').value),
-        invert: $('asset-invert').checked,
-        dither: $('asset-dither').checked,
+        fit: opts.fit,
+        threshold: opts.threshold,
+        invert: opts.invert,
+        dither: opts.dither,
+        zoom: opts.zoom,
+        offset_x: opts.offset_x,
+        offset_y: opts.offset_y,
+        brightness: opts.brightness,
+        contrast: opts.contrast,
         as_standby: $('asset-standby').checked,
         pause_after: $('asset-pause').checked,
       }),
@@ -510,8 +782,6 @@ $('btn-upload').onclick = async () => {
       $('asset-progress').textContent = '失败：' + result.error;
     } else {
       lastAsset = result;
-      $('asset-preview').src = result.preview;
-      $('preview-wrap').style.display = 'block';
       $('asset-info').textContent = `${file.name} · ${result.frames} 帧 · ${(result.bytes / 1024).toFixed(1)} KB`;
       $('asset-progress').textContent = result.animated ? '已提交（动画）' : '已提交';
     }

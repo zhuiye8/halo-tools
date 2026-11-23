@@ -102,11 +102,11 @@ class ProgressClock:
             return self.position
 
         if playback.position is not None:
-            # The player gives us ground truth; smooth tiny jitter only.
-            if abs(playback.position + self.offset - self.position) > 1.5:
+            # The player gives us ground truth; snap on seeks, smooth small jitter.
+            if abs(playback.position + self.offset - self.position) > 0.75:
                 self.position = playback.position + self.offset
             else:
-                self.position += (playback.position + self.offset - self.position) * 0.2
+                self.position += (playback.position + self.offset - self.position) * 0.25
         elif playback.playing and self.playing:
             self.position += elapsed * max(0.0, playback.rate or 1.0)
         self.playing = playback.playing
@@ -134,9 +134,12 @@ class EngineConfig:
     standby_after: float = 20.0            # seconds of pause before standby
     empty_text: str = ""
     preferred_aumid: str | None = None
-    scroll_long_lines: bool = True         # marquee for lines wider than the screen
-    scroll_threshold_units: int = 14       # half-width cells; CJK counts as 2
-    segment_fade: bool = True              # fade between chunks of a long line
+    scroll_long_lines: bool = True         # keep for compatibility; see line_mode
+    scroll_threshold_units: int = 32       # half-width cells; CJK counts as 2
+    line_mode: str = "page"                # page | scroll | first
+    page_units: int = 32                   # characters per page (half-width cells)
+    scroll_lead_spaces: int = 2            # delay before the first character scrolls in
+    segment_fade: bool = True              # fade between pages of a long line
     interlude_clear_after: float = 4.0     # silence longer than this clears the text
     interlude_scene_after: float = 10.0    # longer than this falls back to a scene
 
@@ -167,24 +170,68 @@ class LyricsEngine:
         self._interlude_state = "none"
 
     # ------------------------------------------------------------------ helpers
+    # ------------------------------------------------------------------ paging
+    def _pages(self, text: str) -> list[str]:
+        """Split a line into screen-sized pages (byte and width limits)."""
+        pages: list[str] = []
+        current: list[str] = []
+        used_bytes = 0
+        used_units = 0
+        for char in text:
+            size = len(char.encode("utf-8"))
+            units = 2 if ord(char) > 0x2E7F else 1
+            if (used_bytes + size > protocol.MAX_TEXT_BYTES
+                    or used_units + units > self.config.page_units):
+                pages.append("".join(current))
+                current = []
+                used_bytes = 0
+                used_units = 0
+            current.append(char)
+            used_bytes += size
+            used_units += units
+        if current:
+            pages.append("".join(current))
+        return pages or [""]
+
+    @staticmethod
+    def _page_at(line: LyricLine, position: float, pages: list[str]) -> int:
+        """Pick the page by elapsed fraction, weighted by each page's width."""
+        if len(pages) <= 1:
+            return 0
+        weights = [max(1, display_units(page)) for page in pages]
+        total = sum(weights)
+        span = max(0.001, line.end - line.start)
+        fraction = min(max((position - line.start) / span, 0.0), 0.999999)
+        target = fraction * total
+        seen = 0
+        for index, weight in enumerate(weights):
+            seen += weight
+            if target < seen:
+                return index
+        return len(pages) - 1
+
     def _render(self, line: LyricLine, position: float) -> None:
-        chunks = segment_text(line.text)
+        pages = self._pages(line.text)
+        mode = self.config.line_mode
         scroll = self.config.scroll
-        long_line = (self.config.scroll_long_lines and len(chunks) == 1
-                     and display_units(line.text) > self.config.scroll_threshold_units)
         animation = self.config.animation
-        if long_line:
-            # The firmware scrolls its stored text; one packet is enough because
-            # ``segment_text`` only produced a single chunk.
-            chunk = line.text
+        index = 0
+
+        hardware_scroll = (
+            mode == "scroll" and len(line.text.encode("utf-8")) <= protocol.MAX_TEXT_BYTES
+        )
+        if hardware_scroll:
+            # Lead-in spaces delay the first character; the firmware then scrolls at
+            # its own pace, so this stays an opt-in mode.
+            chunk = " " * max(0, self.config.scroll_lead_spaces) + line.text
             scroll = Scroll.RIGHT_TO_LEFT
             animation = None
         else:
-            chunk = chunks[segment_index(line, position, len(chunks))]
-            if animation is None and self.config.segment_fade and len(chunks) > 1:
-                # Long lines change chunk abruptly; borrow the device's fade-in
-                # animation so the switch does not look like a glitch.
+            index = 0 if mode == "first" else self._page_at(line, position, pages)
+            chunk = pages[index]
+            if animation is None and self.config.segment_fade and len(pages) > 1:
                 animation = 2
+
         if chunk == self._current_chunk and scroll == self._current_scroll:
             return
         self._current_chunk = chunk
@@ -195,10 +242,10 @@ class LyricsEngine:
             scroll=scroll,
             animation=animation if scroll is None else None,
         )
-        log.info("line %.1fs [%d/%d]%s%s: %s", line.start,
-                 segment_index(line, position, len(chunks)) + 1, len(chunks),
-                 " scroll" if scroll else "", " fade" if animation == 2 and
-                 self.config.animation is None else "", chunk)
+        log.info("line %.1fs page %d/%d%s%s: %s", line.start, index + 1, len(pages),
+                 " scroll" if scroll else "",
+                 " fade" if animation == 2 and self.config.animation is None else "",
+                 chunk.strip() or chunk)
 
     # ------------------------------------------------------------- interlude
     def _leave_interlude(self) -> None:

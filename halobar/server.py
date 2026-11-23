@@ -104,6 +104,8 @@ class ConsoleServer:
             "align": config.align.value,
             "animation": config.animation,
             "scroll_long_lines": config.scroll_long_lines,
+            "line_mode": config.line_mode,
+            "page_units": config.page_units,
             "standby_after": config.standby_after,
             "standby_scene": config.standby_scene,
         }
@@ -141,6 +143,8 @@ class ConsoleServer:
                 align=payload.get("align"),
                 animation=payload.get("animation"),
                 scroll_long_lines=payload.get("scroll_long_lines"),
+                line_mode=payload.get("line_mode"),
+                page_units=payload.get("page_units"),
                 standby_after=payload.get("standby_after"),
             )
         except (TypeError, ValueError) as exc:
@@ -150,6 +154,7 @@ class ConsoleServer:
             self.settings.apply_align(config.align.value)
             self.settings.apply_animation(config.animation)
             self.settings.scroll_long_lines = config.scroll_long_lines
+            self.settings.line_mode = config.line_mode
             self.settings.standby_after = config.standby_after
             self.settings.standby_scene = config.standby_scene
             self.settings.standby_scene_option = config.standby_scene_option
@@ -192,10 +197,20 @@ class ConsoleServer:
             "threshold": int(payload.get("threshold") or 128),
             "invert": bool(payload.get("invert")),
             "dither": bool(payload.get("dither")),
+            "zoom": float(payload.get("zoom") or 1.0),
+            "offset_x": float(payload.get("offset_x") or 0.0),
+            "offset_y": float(payload.get("offset_y") or 0.0),
+            "brightness": int(payload.get("brightness") or 0),
+            "contrast": float(payload.get("contrast") or 1.0),
         }
         if options["fit"] not in ("contain", "cover", "stretch"):
             return HTTPStatus.BAD_REQUEST, {"error": "fit must be contain/cover/stretch"}
         options["threshold"] = max(0, min(255, options["threshold"]))
+        options["zoom"] = max(0.2, min(4.0, options["zoom"]))
+        options["offset_x"] = max(-1.0, min(1.0, options["offset_x"]))
+        options["offset_y"] = max(-1.0, min(1.0, options["offset_y"]))
+        options["brightness"] = max(-100, min(100, options["brightness"]))
+        options["contrast"] = max(0.2, min(3.0, options["contrast"]))
         try:
             asset = bitmap.load(raw, name)
             processed = bitmap.apply_options(asset, **options)

@@ -97,23 +97,46 @@ def load(data: bytes, name: str = "") -> "Asset":
 
 
 def prepare(frame, *, fit: str = "contain", threshold: int = 128,
-            invert: bool = False, dither: bool = False):
-    """Convert one RGBA frame to a 256x32 1bpp image."""
+            invert: bool = False, dither: bool = False, zoom: float = 1.0,
+            offset_x: float = 0.0, offset_y: float = 0.0,
+            brightness: int = 0, contrast: float = 1.0):
+    """Convert one RGBA frame into a 256x32 1bpp image.
+
+    ``zoom`` > 1 magnifies the picture, ``offset_x``/``offset_y`` pan it (fractions
+    of the source size, -1..1), ``brightness`` shifts levels (-100..100) and
+    ``contrast`` scales them (0.2..3).  The same transform is mirrored in the
+    console's JavaScript preview so what you see is what gets uploaded.
+    """
     Image, ImageOps = _pil()
     background = Image.new("RGBA", frame.size, (0, 0, 0, 255))
     gray = Image.alpha_composite(background, frame).convert("L")
 
+    # fit the source into the 256x32 canvas, then apply zoom/pan on the canvas
     if fit == "cover":
-        gray = ImageOps.fit(gray, (WIDTH, HEIGHT), Image.Resampling.LANCZOS)
+        fitted = ImageOps.fit(gray, (WIDTH, HEIGHT), Image.Resampling.LANCZOS)
     elif fit == "stretch":
-        gray = gray.resize((WIDTH, HEIGHT), Image.Resampling.LANCZOS)
+        fitted = gray.resize((WIDTH, HEIGHT), Image.Resampling.LANCZOS)
     else:  # contain
         small = ImageOps.contain(gray, (WIDTH, HEIGHT), Image.Resampling.LANCZOS)
-        canvas = Image.new("L", (WIDTH, HEIGHT), 0)
-        canvas.paste(small, ((WIDTH - small.width) // 2, (HEIGHT - small.height) // 2))
-        gray = canvas
+        fitted = Image.new("L", (WIDTH, HEIGHT), 0)
+        fitted.paste(small, ((WIDTH - small.width) // 2, (HEIGHT - small.height) // 2))
 
-    pixels = list(gray.getdata())
+    if zoom != 1.0 or offset_x or offset_y:
+        scaled_w = max(1, int(round(WIDTH * zoom)))
+        scaled_h = max(1, int(round(HEIGHT * zoom)))
+        scaled = fitted.resize((scaled_w, scaled_h), Image.Resampling.LANCZOS)
+        canvas = Image.new("L", (WIDTH, HEIGHT), 0)
+        x = int(round((WIDTH - scaled_w) / 2 + offset_x * WIDTH))
+        y = int(round((HEIGHT - scaled_h) / 2 + offset_y * HEIGHT))
+        canvas.paste(scaled, (x, y))
+        fitted = canvas
+
+    pixels = list(fitted.getdata())
+    if brightness or contrast != 1.0:
+        pixels = [
+            max(0, min(255, int(round((value - 128) * contrast + 128 + brightness))))
+            for value in pixels
+        ]
     if invert:
         pixels = [255 - value for value in pixels]
 

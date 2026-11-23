@@ -156,6 +156,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         standby_scene_option=config.standby_scene_option,
         standby_after=config.standby_after,
         scroll_long_lines=config.scroll_long_lines,
+        line_mode=config.line_mode,
     ))
 
     console = None

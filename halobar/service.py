@@ -85,7 +85,10 @@ class ServiceConfig:
     lyric_poll_seconds: float = 1.0
     reconnect_seconds: float = 3.0
     scroll_long_lines: bool = True
-    scroll_threshold_units: int = 14
+    scroll_threshold_units: int = 32
+    line_mode: str = "page"
+    page_units: int = 32
+    scroll_lead_spaces: int = 2
     interlude_clear_after: float = 4.0
     interlude_scene_after: float = 10.0
     standby_scene_option: int = 0
@@ -191,11 +194,22 @@ class LyricsService:
 
     def update_config(self, *, align: str | None = None, animation: int | None | str = "keep",
                       scroll_long_lines: bool | None = None,
+                      line_mode: str | None = None,
+                      page_units: int | None = None,
                       standby_after: float | None = None) -> None:
         """Apply live settings from the console."""
         with self._lock:
             if align is not None:
                 self.config.align = Align(str(align))
+            if line_mode is not None:
+                if line_mode not in ("page", "scroll", "first"):
+                    raise ValueError("line_mode must be page/scroll/first")
+                self.config.line_mode = line_mode
+            if page_units is not None:
+                units = int(page_units)
+                if not 8 <= units <= 64:
+                    raise ValueError("page_units must be 8..64")
+                self.config.page_units = units
             if animation != "keep":
                 if animation is None:
                     self.config.animation = None
@@ -216,6 +230,8 @@ class LyricsService:
                 engine.config.align = self.config.align
                 engine.config.animation = self.config.animation
                 engine.config.scroll_long_lines = self.config.scroll_long_lines
+                engine.config.line_mode = self.config.line_mode
+                engine.config.page_units = self.config.page_units
                 engine.config.standby_after = self.config.standby_after
                 engine._current_chunk = None  # force a redraw with the new settings
                 engine._current_scroll = None
@@ -317,6 +333,9 @@ class LyricsService:
             standby_after=self.config.standby_after,
             scroll_long_lines=self.config.scroll_long_lines,
             scroll_threshold_units=self.config.scroll_threshold_units,
+            line_mode=self.config.line_mode,
+            page_units=self.config.page_units,
+            scroll_lead_spaces=self.config.scroll_lead_spaces,
             interlude_clear_after=self.config.interlude_clear_after,
             interlude_scene_after=self.config.interlude_scene_after,
         ))
