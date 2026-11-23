@@ -17,12 +17,12 @@ VSVersionInfo(
           [
             StringStruct("CompanyName", "halobar"),
             StringStruct("FileDescription", "halobar - PixelBar lyrics and pixel-screen tool"),
-            StringStruct("FileVersion", "0.1.0"),
+            StringStruct("FileVersion", "0.1.1"),
             StringStruct("InternalName", "halobar"),
             StringStruct("LegalCopyright", "MIT License"),
             StringStruct("OriginalFilename", "halobar.exe"),
             StringStruct("ProductName", "halobar"),
-            StringStruct("ProductVersion", "0.1.0"),
+            StringStruct("ProductVersion", "0.1.1"),
           ],
         )
       ]
