@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="halo-token" content="__HALO_TOKEN__">
+<title>halobar 控制台</title>
+<style>
+  :root {
+    --bg: #16171d; --card: #1f2028; --line: #2c2e39; --text: #e7e8ee;
+    --muted: #9aa0b0; --accent: #f0b4c8; --ok: #59c98d; --warn: #e2b341; --err: #e2635f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.55 "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 22px 18px 40px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; letter-spacing: .5px; }
+  .badge {
+    font-size: 12px; padding: 2px 10px; border-radius: 999px;
+    background: #2a2c36; color: var(--muted); border: 1px solid var(--line);
+  }
+  .badge.ok { color: var(--ok); border-color: #2f4a3a; }
+  .badge.warn { color: var(--warn); border-color: #4a4227; }
+  .badge.err { color: var(--err); border-color: #4a2b2b; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 14px;
+  }
+  .card h2 { font-size: 13px; margin: 0 0 12px; color: var(--muted); font-weight: 600; letter-spacing: .8px; }
+  .track { font-size: 20px; font-weight: 600; }
+  .artist { color: var(--muted); margin-top: 2px; }
+  .line {
+    margin-top: 14px; padding: 14px 16px; border-radius: 10px;
+    background: #191a21; border: 1px dashed var(--line);
+    font-size: 17px; letter-spacing: 1px; min-height: 26px;
+    color: var(--accent); word-break: break-all;
+  }
+  .progress { height: 6px; background: #2a2c36; border-radius: 4px; margin-top: 14px; overflow: hidden; }
+  .progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s linear; }
+  .meta { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  button {
+    font: inherit; color: var(--text); background: #2a2c36; border: 1px solid var(--line);
+    padding: 8px 14px; border-radius: 9px; cursor: pointer; transition: .15s;
+  }
+  button:hover { background: #333646; border-color: #3d4152; }
+  button.primary { background: #3a2f38; border-color: #55414c; color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  label.field { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  select, input[type=number] {
+    font: inherit; color: var(--text); background: #23242d; border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 8px;
+  }
+  input[type=number] { width: 72px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  pre#logs {
+    max-height: 260px; overflow: auto; background: #14151a; border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px; font: 12px/1.5 Consolas, monospace; color: #b9bfd0;
+    white-space: pre-wrap;
+  }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .kv { display: grid; grid-template-columns: 96px 1fr; gap: 4px 12px; font-size: 13px; }
+  .kv span:nth-child(odd) { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>halobar 控制台</h1>
+    <span id="state" class="badge">读取中…</span>
+    <span id="source" class="badge">-</span>
+  </header>
+
+  <section class="card">
+    <h2>正在播放</h2>
+    <div id="track" class="track">未检测到播放</div>
+    <div id="artist" class="artist">-</div>
+    <div class="line" id="line">—</div>
+    <div class="progress"><i id="bar"></i></div>
+    <div class="meta"><span id="pos">0:00</span><span id="dur">0:00</span></div>
+    <div class="row">
+      <button id="btn-toggle" class="primary">暂停同步</button>
+      <button id="btn-restore">恢复屏幕（停止跟随）</button>
+      <button id="btn-minus">−0.5s</button>
+      <button id="btn-plus">+0.5s</button>
+      <button id="btn-next">对齐到下一句</button>
+    </div>
+    <div class="hint">微调只影响本地时钟；使用 6K Labs 真实进度时，偏差会在下一次采样被纠正。</div>
+  </section>
+
+  <section class="card">
+    <h2>显示设置</h2>
+    <div class="grid">
+      <label class="field">对齐
+        <select id="align">
+          <option value="center">居中</option>
+          <option value="left">左对齐</option>
+          <option value="right">右对齐</option>
+          <option value="justify">两端对齐</option>
+        </select>
+      </label>
+      <label class="field">歌词动画
+        <select id="animation">
+          <option value="">关闭</option>
+          <option value="0">动画 1</option>
+          <option value="1">动画 2</option>
+          <option value="2">动画 3</option>
+          <option value="3">动画 4</option>
+          <option value="4">动画 5</option>
+        </select>
+      </label>
+      <label class="field">长句滚动
+        <input type="checkbox" id="scroll_long">
+      </label>
+      <label class="field">暂停后待机（秒）
+        <input type="number" id="standby" min="0" max="600" step="5">
+      </label>
+    </div>
+    <div class="row">
+      <button id="btn-save">保存设置</button>
+    </div>
+    <div class="hint">长句滚动只对单包能装下的句子生效（约 16 汉字以内）；更长的句子会按时间切片。</div>
+  </section>
+
+  <section class="card">
+    <h2>自定义像素屏</h2>
+    <div class="grid">
+      <label class="field">图片 / GIF
+        <input type="file" id="asset-file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif">
+      </label>
+      <label class="field">适配
+        <select id="asset-fit">
+          <option value="contain">完整显示</option>
+          <option value="cover">铺满裁切</option>
+          <option value="stretch">拉伸填满</option>
+        </select>
+      </label>
+      <label class="field">阈值
+        <input type="range" id="asset-threshold" min="0" max="255" value="128">
+        <span id="asset-threshold-val">128</span>
+      </label>
+      <label class="field">反色 <input type="checkbox" id="asset-invert"></label>
+      <label class="field">抖动 <input type="checkbox" id="asset-dither"></label>
+      <label class="field">设为待机画面 <input type="checkbox" id="asset-standby" checked></label>
+      <label class="field">上传后暂停歌词 <input type="checkbox" id="asset-pause"></label>
+    </div>
+    <div class="row">
+      <button id="btn-upload" class="primary">上传到音箱</button>
+      <button id="btn-showasset">立即显示</button>
+    </div>
+    <div class="progress" style="margin-top:12px"><i id="asset-bar"></i></div>
+    <div class="meta"><span id="asset-info">尚未上传素材</span><span id="asset-progress"></span></div>
+    <img id="asset-preview" alt=""
+         style="margin-top:12px;max-width:100%;image-rendering:pixelated;border-radius:8px;border:1px solid var(--line);display:none">
+    <div class="hint">上传会覆盖音箱里的自定义场景槽（256×32 单色，最多 8 帧，每帧至少 100ms）；原内容需用 TempoHub / App 重新发送。</div>
+  </section>
+
+  <section class="card">
+    <h2>设备</h2>
+    <div class="kv">
+      <span>连接</span><span id="conn">-</span>
+      <span>固件</span><span id="fw">-</span>
+      <span>进度源</span><span id="src2">-</span>
+      <span>歌词源</span><span id="lsrc">-</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>日志</h2>
+    <pre id="logs">加载中…</pre>
+  </section>
+</div>
+
+<script>
+const token = document.querySelector('meta[name="halo-token"]').content;
+const api = (path, options = {}) => fetch(path, {
+  ...options,
+  headers: { 'Content-Type': 'application/json', 'X-Halo-Token': token, ...(options.headers || {}) },
+}).then(r => r.json());
+
+const fmt = (s) => {
+  if (s === null || s === undefined) return '0:00';
+  const v = Math.max(0, Math.floor(s));
+  return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
+};
+const $ = (id) => document.getElementById(id);
+
+let paused = false;
+let lastState = '';
+
+async function refresh() {
+  try {
+    const s = await api('/api/status');
+    lastState = s.state || '';
+    $('state').textContent = ({ idle: '空闲', following: '同步中', paused: '已暂停',
+      restored: '已恢复屏幕', 'waiting-device': '等待设备', error: '错误',
+      connecting: '连接中' })[s.state] || s.state;
+    $('state').className = 'badge ' + (s.connected ? (s.state === 'following' ? 'ok' : 'warn') : 'err');
+    $('source').textContent = s.source === 'none' ? '无进度源' : s.source;
+    $('track').textContent = s.track || '未检测到播放';
+    $('artist').textContent = s.artist || '-';
+    $('line').textContent = s.line || '—';
+    $('pos').textContent = fmt(s.position);
+    $('dur').textContent = fmt(s.duration);
+    const pct = (s.position && s.duration) ? Math.min(100, s.position / s.duration * 100) : 0;
+    $('bar').style.width = pct + '%';
+    $('conn').textContent = s.connected ? '已连接' : '未连接';
+    $('fw').textContent = s.firmware || '-';
+    $('src2').textContent = s.source || '-';
+    $('lsrc').textContent = s.lyrics_source || '-';
+    const uploadPct = Math.round((s.upload_progress || 0) * 100);
+    $('asset-bar').style.width = uploadPct + '%';
+    if (s.upload_state === 'uploading' || s.upload_state === 'queued') {
+      $('asset-progress').textContent = '上传中 ' + uploadPct + '%';
+    } else if (s.upload_state === 'error') {
+      $('asset-progress').textContent = '上传失败：' + (s.last_error || '');
+    } else if (s.upload_state === 'done' && s.asset_name) {
+      $('asset-info').textContent = `${s.asset_name} · ${s.asset_frames} 帧 · 场景 ${s.asset_category}/${s.asset_option}`;
+      $('asset-progress').textContent = '上传完成';
+    }
+    const canToggle = ['following', 'paused', 'restored'].includes(s.state);
+    $('btn-toggle').disabled = !canToggle;
+    $('btn-toggle').textContent = (s.state === 'paused' || s.state === 'restored') ? '继续同步' : '暂停同步';
+    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
+      $('align').value = s.settings.align;
+      $('animation').value = s.settings.animation === null ? '' : String(s.settings.animation);
+      $('scroll_long').checked = !!s.settings.scroll_long_lines;
+      $('standby').value = s.settings.standby_after;
+    }
+  } catch (e) {
+    $('state').textContent = '控制台连接失败';
+    $('state').className = 'badge err';
+  }
+}
+
+async function command(action, value) {
+  await api('/api/command', { method: 'POST', body: JSON.stringify({ action, value }) });
+  refresh();
+}
+
+async function saveSettings() {
+  const animation = $('animation').value;
+  await api('/api/settings', {
+    method: 'POST',
+    body: JSON.stringify({
+      align: $('align').value,
+      animation: animation === '' ? null : Number(animation),
+      scroll_long_lines: $('scroll_long').checked,
+      standby_after: Number($('standby').value),
+    }),
+  });
+  refresh();
+}
+
+async function refreshLogs() {
+  try {
+    const data = await api('/api/logs');
+    $('logs').textContent = (data.lines || []).slice(-120).join('\n') || '（暂无日志）';
+    $('logs').scrollTop = $('logs').scrollHeight;
+  } catch (e) { /* ignore */ }
+}
+
+$('btn-toggle').onclick = () => command(lastState === 'paused' || lastState === 'restored' ? 'resume' : 'pause');
+$('btn-restore').onclick = () => command('restore');
+$('btn-minus').onclick = () => command('nudge', -0.5);
+$('btn-plus').onclick = () => command('nudge', 0.5);
+$('btn-next').onclick = () => command('next_line');
+$('btn-save').onclick = saveSettings;
+
+// ---------------------------------------------------------------- 素材工作台
+let lastAsset = null;
+
+$('asset-threshold').oninput = () => { $('asset-threshold-val').textContent = $('asset-threshold').value; };
+
+$('btn-upload').onclick = async () => {
+  const file = $('asset-file').files[0];
+  if (!file) { alert('先选择一张图片或 GIF'); return; }
+  const buffer = await file.arrayBuffer();
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  $('btn-upload').disabled = true;
+  $('asset-progress').textContent = '处理中…';
+  try {
+    const result = await api('/api/asset/upload', {
+      method: 'POST',
+      body: JSON.stringify({
+        filename: file.name,
+        data: btoa(binary),
+        fit: $('asset-fit').value,
+        threshold: Number($('asset-threshold').value),
+        invert: $('asset-invert').checked,
+        dither: $('asset-dither').checked,
+        as_standby: $('asset-standby').checked,
+        pause_after: $('asset-pause').checked,
+      }),
+    });
+    if (result.error) {
+      $('asset-progress').textContent = '失败：' + result.error;
+    } else {
+      lastAsset = result;
+      $('asset-preview').src = result.preview;
+      $('asset-preview').style.display = 'block';
+      $('asset-info').textContent = `${file.name} · ${result.frames} 帧 · ${(result.bytes / 1024).toFixed(1)} KB`;
+      $('asset-progress').textContent = result.animated ? '已提交上传（动画）' : '已提交上传';
+    }
+  } catch (e) {
+    $('asset-progress').textContent = '上传请求失败';
+  } finally {
+    $('btn-upload').disabled = false;
+    refresh();
+  }
+};
+
+$('btn-showasset').onclick = async () => {
+  const body = lastAsset
+    ? { category: lastAsset.category, option: lastAsset.option }
+    : {};
+  const result = await api('/api/asset/display', { method: 'POST', body: JSON.stringify(body) });
+  if (result.error) alert(result.error);
+  refresh();
+};
+
+refresh();
+setInterval(refresh, 700);
+refreshLogs();
+setInterval(refreshLogs, 2500);
+</script>
+</body>
+</html>

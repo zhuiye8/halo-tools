@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+.venv/
+venv/
+*.egg-info/
+
+# Build output
+dist/
+build/
+*.spec
+
+# Local research clones / scratch (not part of the project)
+repo/
+look/
+src/
+
+# Runtime artefacts
+probe/*.png
+lyrics_*.png
+run_out.log
+run_err.log
+pid.txt
+token.txt
+
+# OS
+Thumbs.db
+.DS_Store

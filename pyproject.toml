@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "halobar"
+version = "0.1.0"
+description = "Lyrics and custom pixel content for the EDIFIER / 花再 Halo PixelBar"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+media = ["winrt-runtime", "winrt-Windows.Media.Control", "winrt-Windows.Foundation"]
+ui = ["PySide6"]
+dev = ["pytest"]
+
+[project.scripts]
+halobar = "halobar.app:main"
+
+[tool.setuptools.packages.find]
+include = ["halobar*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
