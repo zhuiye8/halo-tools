@@ -53,10 +53,13 @@ class RingBufferHandler(logging.Handler):
 
 
 class ConsoleServer:
-    def __init__(self, service: LyricsService, port: int = 8765, token: str | None = None) -> None:
+    def __init__(self, service: LyricsService, port: int = 8765, token: str | None = None,
+                 settings=None, environment=None) -> None:
         self.service = service
         self.port = port
         self.token = token or secrets.token_urlsafe(16)
+        self.settings = settings
+        self.environment = environment
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self.logs = RingBufferHandler()
@@ -66,7 +69,16 @@ class ConsoleServer:
     # ------------------------------------------------------------------ lifecycle
     def start(self) -> str:
         handler = _make_handler(self)
-        self._httpd = ThreadingHTTPServer(("127.0.0.1", self.port), handler)
+        last_error = None
+        for offset in range(0, 10):
+            try:
+                self._httpd = ThreadingHTTPServer(("127.0.0.1", self.port + offset), handler)
+                break
+            except OSError as exc:  # port busy -> try the next one
+                last_error = exc
+                continue
+        if self._httpd is None:
+            raise OSError(f"cannot bind the console port: {last_error}")
         self.port = self._httpd.server_address[1]
         self._thread = threading.Thread(target=self._httpd.serve_forever,
                                         name="halobar-console", daemon=True)
@@ -84,6 +96,8 @@ class ConsoleServer:
 
     # -------------------------------------------------------------------- helpers
     def status_payload(self) -> dict:
+        from . import __version__
+
         status = asdict(self.service.status())
         config = self.service.config
         status["settings"] = {
@@ -93,7 +107,10 @@ class ConsoleServer:
             "standby_after": config.standby_after,
             "standby_scene": config.standby_scene,
         }
+        status["version"] = __version__
         status["firmware"] = status.get("firmware") or "-"
+        status["environment"] = (
+            self.environment.get().as_dict() if self.environment is not None else None)
         return status
 
     def handle_command(self, payload: dict) -> tuple[int, dict]:
@@ -127,7 +144,28 @@ class ConsoleServer:
             )
         except (TypeError, ValueError) as exc:
             return HTTPStatus.BAD_REQUEST, {"error": str(exc)}
+        if self.settings is not None:
+            config = self.service.config
+            self.settings.apply_align(config.align.value)
+            self.settings.apply_animation(config.animation)
+            self.settings.scroll_long_lines = config.scroll_long_lines
+            self.settings.standby_after = config.standby_after
+            self.settings.standby_scene = config.standby_scene
+            self.settings.standby_scene_option = config.standby_scene_option
+            self.settings.save()
         return HTTPStatus.OK, {"ok": True, "status": self.status_payload()}
+
+    def handle_shortcut(self) -> tuple[int, dict]:
+        from .shortcut import create_desktop_shortcut
+
+        try:
+            link = create_desktop_shortcut()
+        except OSError as exc:
+            return HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)}
+        if self.settings is not None:
+            self.settings.create_shortcut_done = True
+            self.settings.save()
+        return HTTPStatus.OK, {"ok": True, "path": str(link)}
 
     # ------------------------------------------------------------------- assets
     def handle_asset_upload(self, payload: dict) -> tuple[int, dict]:
@@ -174,6 +212,20 @@ class ConsoleServer:
             pause_after=bool(payload.get("pause_after", False)),
         )
         self.service.submit_upload(job)
+        if self.settings is not None:
+            import time as _time
+
+            self.settings.last_asset = {
+                "name": name,
+                "frames": len(processed.frames),
+                "category": processed.category,
+                "option": processed.option,
+                "time": _time.time(),
+            }
+            if job.as_standby:
+                self.settings.standby_scene = processed.category
+                self.settings.standby_scene_option = processed.option
+            self.settings.save()
         preview = bitmap.preview_png(processed.frames[0])
         return HTTPStatus.OK, {
             "ok": True,
@@ -261,6 +313,8 @@ def _make_handler(server: ConsoleServer):
                 status, data = server.handle_asset_upload(payload)
             elif path == "/api/asset/display":
                 status, data = server.handle_asset_display(payload)
+            elif path == "/api/shortcut":
+                status, data = server.handle_shortcut()
             else:
                 status, data = HTTPStatus.NOT_FOUND, {"error": "not found"}
             self._json(status, data)

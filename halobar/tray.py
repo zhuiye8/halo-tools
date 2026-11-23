@@ -83,6 +83,15 @@ class TrayApp:
             if self.console_url:
                 webbrowser.open(self.console_url)
 
+        def create_shortcut(icon=None, item=None):
+            from .shortcut import create_desktop_shortcut
+
+            try:
+                link = create_desktop_shortcut()
+                log.info("shortcut created at %s", link)
+            except OSError as exc:
+                log.warning("shortcut creation failed: %s", exc)
+
         def quit_app(icon=None, item=None):
             service.stop()
             if icon is not None:
@@ -101,8 +110,9 @@ class TrayApp:
                 "打开控制台",
                 open_console,
                 enabled=bool(self.console_url),
-                default=False,
+                default=True,
             ),
+            pystray.MenuItem("创建桌面快捷方式", create_shortcut),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("退出", quit_app),
         )

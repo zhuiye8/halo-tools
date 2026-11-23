@@ -64,6 +64,18 @@
   .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
   .kv { display: grid; grid-template-columns: 96px 1fr; gap: 4px 12px; font-size: 13px; }
   .kv span:nth-child(odd) { color: var(--muted); }
+  a.link { color: var(--accent); text-decoration: none; border-bottom: 1px dotted #6b5560; }
+  a.link:hover { color: #ffd0de; }
+  .banner {
+    margin-bottom: 12px; padding: 12px 14px; border-radius: 10px;
+    background: #2a2430; border: 1px solid #4a3d46; color: #f4d7e2; font-size: 13px;
+    line-height: 1.7;
+  }
+  .banner b { color: var(--accent); }
+  .banner ol { margin: 8px 0 0 18px; padding: 0; }
+  .ok { color: var(--ok); }
+  .no { color: var(--warn); }
+  .bad { color: var(--err); }
 </style>
 </head>
 <body>
@@ -73,6 +85,21 @@
     <span id="state" class="badge">读取中…</span>
     <span id="source" class="badge">-</span>
   </header>
+
+  <section class="card" id="env-card">
+    <h2>环境与插件</h2>
+    <div id="env-banner" class="banner" hidden></div>
+    <div class="kv">
+      <span>网易云</span><span id="env-netease">检测中…</span>
+      <span>BetterNCM</span><span id="env-bncm">检测中…</span>
+      <span>精确进度</span><span id="env-sixk">检测中…</span>
+      <span>TempoHub</span><span id="env-tempo">检测中…</span>
+    </div>
+    <div class="row">
+      <button id="btn-shortcut">创建桌面快捷方式</button>
+      <span class="hint" id="shortcut-hint"></span>
+    </div>
+  </section>
 
   <section class="card">
     <h2>正在播放</h2>
@@ -211,6 +238,7 @@ async function refresh() {
     $('fw').textContent = s.firmware || '-';
     $('src2').textContent = s.source || '-';
     $('lsrc').textContent = s.lyrics_source || '-';
+    renderEnvironment(s.environment);
     const uploadPct = Math.round((s.upload_progress || 0) * 100);
     $('asset-bar').style.width = uploadPct + '%';
     if (s.upload_state === 'uploading' || s.upload_state === 'queued') {
@@ -269,6 +297,48 @@ $('btn-minus').onclick = () => command('nudge', -0.5);
 $('btn-plus').onclick = () => command('nudge', 0.5);
 $('btn-next').onclick = () => command('next_line');
 $('btn-save').onclick = saveSettings;
+
+// ---------------------------------------------------------------- 环境与插件
+function renderEnvironment(env) {
+  if (!env || !env.links) return;
+  const links = env.links;
+  $('env-netease').innerHTML = env.netease_exe
+    ? `<span class="ok">已检测</span> <span style="color:var(--muted)">${env.netease_path}</span>`
+    : `<span class="bad">未检测到官网版</span> · <a class="link" href="${links.netease}" target="_blank">下载</a>`;
+  $('env-bncm').innerHTML = env.betterncm
+    ? '<span class="ok">已安装</span>'
+    : `<span class="no">未安装</span> · <a class="link" href="${links.betterncm}" target="_blank">BetterNCM</a> → <a class="link" href="${links.inflink}" target="_blank">InfLink-rs</a> → <a class="link" href="${links.sixk}" target="_blank">6K Labs</a>`;
+  $('env-sixk').innerHTML = env.sixk
+    ? '<span class="ok">在线（真实进度）</span>'
+    : (env.betterncm
+        ? `<span class="no">未连接（网易云没开，或插件未加载）</span> · <a class="link" href="${links.sixk}" target="_blank">检查安装</a>`
+        : `<span class="no">未安装（当前为估算进度）</span> · <a class="link" href="${links.sixk}" target="_blank">安装 6K Labs</a>`);
+  $('env-tempo').innerHTML = env.tempo_hub
+    ? '<span class="no">正在运行，可能与本程序抢设备，建议退出</span>'
+    : '<span class="ok">未运行</span>';
+
+  const banner = $('env-banner');
+  if (!env.sixk) {
+    banner.hidden = false;
+    banner.innerHTML =
+      '<b>想要「拖动进度条也不漂」的精准歌词？</b>需要给官网版网易云装上插件链（约 5 分钟）：' +
+      `<ol>
+         <li>确认用的是<a class="link" href="${links.netease}" target="_blank">官网安装版</a>（Store 版无法注入）</li>
+         <li>安装 <a class="link" href="${links.betterncm}" target="_blank">BetterNCM</a>（选择网易云安装目录）</li>
+         <li>把 <a class="link" href="${links.inflink}" target="_blank">InfLink-rs</a> 的 .plugin 放进插件目录</li>
+         <li>把 <a class="link" href="${links.sixk}" target="_blank">6K Labs</a> 装进插件目录，重启网易云</li>
+       </ol>装好后本页会自动显示「在线（真实进度）」，无需重启本程序。`;
+  } else {
+    banner.hidden = true;
+  }
+}
+
+$('btn-shortcut').onclick = async () => {
+  const result = await api('/api/shortcut', { method: 'POST', body: '{}' });
+  $('shortcut-hint').textContent = result.error
+    ? '创建失败：' + result.error
+    : '已创建：' + result.path;
+};
 
 // ---------------------------------------------------------------- 素材工作台
 let lastAsset = null;
