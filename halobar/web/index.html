@@ -6,370 +6,439 @@
 <meta name="halo-token" content="__HALO_TOKEN__">
 <title>halobar · 花再 PixelBar 歌词</title>
 <style>
-  :root {
-    --pink: #ff7aa8;
-    --pink-soft: #ffe3ee;
-    --pink-line: #ffd0e2;
-    --lav: #8f8bff;
-    --sky: #6fb7ff;
-    --mint: #4fd1a5;
-    --sun: #ffb84d;
-    --ink: #3d3648;
-    --ink-soft: #7b7387;
-    --ink-faint: #a9a2b3;
-    --card: #ffffff;
-    --card-alt: #fffafc;
-    --line: #f3e6ee;
-    --ok: #2fae7c;
-    --warn: #e08a1e;
-    --err: #e75a6a;
-    --shadow: 0 10px 30px rgba(255, 154, 187, .16);
+:root {
+    /* colour */
+    --bg: #fbfbfd;
+    --surface: #ffffff;
+    --line: #ececf2;
+    --line-strong: #e0e0ea;
+    --ink: #1c1b22;
+    --ink-2: #6b6779;
+    --ink-3: #9a96a8;
+    --accent: #6c4cff;
+    --accent-hover: #5a3bf0;
+    --accent-weak: #f1eeff;
+    --ok: #1f9d6b;
+    --warn: #c7761a;
+    --err: #d93a4a;
+    /* shape */
+    --r-lg: 16px;
+    --r-md: 10px;
+    --r-pill: 999px;
+    /* space */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 24px;
+    --sp-6: 32px;
+    /* type */
+    --fs-label: 11px;
+    --fs-meta: 12px;
+    --fs-body: 14px;
+    --fs-lead: 17px;
+    --fs-title: 21px;
+    --fs-hero: 26px;
+    --fs-lyric: 32px;
+    --mono: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+    /* motion */
+    --ease: cubic-bezier(.2, .8, .2, 1);
+    --dur: 160ms;
+    /* elevation */
+    --shadow: 0 1px 2px rgba(28, 27, 34, .04), 0 10px 26px rgba(28, 27, 34, .05);
   }
+
   * { box-sizing: border-box; }
   html, body { min-height: 100%; }
   body {
     margin: 0;
+    background: var(--bg);
     color: var(--ink);
-    font: 14px/1.65 "Microsoft YaHei UI", "Segoe UI", "PingFang SC", system-ui, sans-serif;
-    background:
-      radial-gradient(900px 420px at 8% -10%, #ffe3ef 0%, rgba(255, 227, 239, 0) 62%),
-      radial-gradient(760px 380px at 100% 0%, #e2f1ff 0%, rgba(226, 241, 255, 0) 60%),
-      radial-gradient(700px 520px at 50% 118%, #e8fff6 0%, rgba(232, 255, 246, 0) 66%),
-      linear-gradient(180deg, #fffdfe 0%, #f8fbff 55%, #f4fffb 100%);
-    background-attachment: fixed;
+    font: var(--fs-body)/1.6 "Microsoft YaHei UI", "Segoe UI", "PingFang SC", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 26px 20px 56px; }
 
-  /* ---------- header ---------- */
-  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
-  .logo {
-    width: 44px; height: 44px; border-radius: 14px; flex: 0 0 auto;
-    background: linear-gradient(135deg, #ff9ec2, #b9a7ff 70%, #8fd9ff);
-    display: grid; place-items: center; color: #fff; font-size: 20px;
-    box-shadow: 0 8px 20px rgba(255, 140, 180, .35);
+  .shell { max-width: 1180px; margin: 0 auto; padding: var(--sp-6) var(--sp-5) 56px; }
+
+  /* ---------------- top bar ---------------- */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-5);
   }
-  header h1 {
-    margin: 0; font-size: 21px; letter-spacing: .5px; font-weight: 700;
-    background: linear-gradient(92deg, #ff6f9c, #9a7dff 60%, #3fb6ff);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
+  .brand { display: flex; align-items: center; gap: var(--sp-3); }
+  .mark {
+    width: 40px; height: 40px; border-radius: var(--r-md);
+    background: var(--ink); color: #fff;
+    display: grid; place-items: center; font-size: 17px; font-weight: 700;
   }
-  header h1 small { font-size: 12px; color: var(--ink-faint); -webkit-text-fill-color: var(--ink-faint); margin-left: 8px; }
-  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+  .brand h1 { margin: 0; font-size: var(--fs-title); font-weight: 700; letter-spacing: -.01em; }
+  .brand .sub { margin: 0; color: var(--ink-3); font-size: var(--fs-meta); }
+  .status { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+
+  /* ---------------- pills ---------------- */
   .chip {
     display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
-    background: #fff; border: 1px solid var(--pink-line); color: var(--ink-soft);
-    box-shadow: 0 3px 10px rgba(255, 175, 200, .14);
+    height: 28px; padding: 0 var(--sp-3);
+    border: 1px solid var(--line-strong); border-radius: var(--r-pill);
+    background: var(--surface); color: var(--ink-2);
+    font-size: var(--fs-meta); font-weight: 600;
+    transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
   }
-  .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #c9c3d4; }
-  .chip.ok { color: var(--ok); border-color: #c8eddd; }
-  .chip.ok::before { background: var(--ok); box-shadow: 0 0 0 3px rgba(79, 209, 165, .18); }
-  .chip.warn { color: var(--warn); border-color: #f6e2bf; }
-  .chip.warn::before { background: var(--sun); box-shadow: 0 0 0 3px rgba(255, 184, 77, .18); }
-  .chip.err { color: var(--err); border-color: #f6cdd2; }
-  .chip.err::before { background: var(--err); box-shadow: 0 0 0 3px rgba(231, 90, 106, .16); }
+  .chip::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ink-3); flex: 0 0 auto;
+  }
+  .chip.ok { color: var(--ok); border-color: #d5efe3; }
+  .chip.ok::before { background: var(--ok); }
+  .chip.warn { color: var(--warn); border-color: #f2e3cd; }
+  .chip.warn::before { background: var(--warn); }
+  .chip.err { color: var(--err); border-color: #f5d6da; }
+  .chip.err::before { background: var(--err); }
 
-  /* ---------- layout ---------- */
-  .grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr); align-items: start; }
-  .col { display: grid; gap: 16px; }
-  @media (max-width: 900px) {
-    .grid { grid-template-columns: minmax(0, 1fr); }
-    .wrap { padding: 18px 14px 40px; }
+  /* ---------------- bento ---------------- */
+  .bento { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--sp-4); }
+  .span-12 { grid-column: span 12; }
+  .span-7 { grid-column: span 7; }
+  .span-6 { grid-column: span 6; }
+  .span-5 { grid-column: span 5; }
+  @media (max-width: 940px) {
+    .bento { grid-template-columns: minmax(0, 1fr); }
+    .span-12, .span-7, .span-6, .span-5 { grid-column: span 1; }
+    .shell { padding: var(--sp-4) var(--sp-4) 40px; }
   }
 
-  /* ---------- cards ---------- */
   .card {
-    position: relative; background: var(--card); border: 1px solid var(--line);
-    border-radius: 20px; padding: 18px 20px; box-shadow: var(--shadow);
-    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: var(--sp-5);
+    box-shadow: var(--shadow);
+    min-width: 0;
   }
-  .card::after {
-    content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
-    background: linear-gradient(90deg, #ffb3cd, #c9b8ff 45%, #9fe6d3);
-    opacity: .85;
-  }
-  .card h2 {
-    display: flex; align-items: center; gap: 8px;
-    margin: 0 0 14px; font-size: 13px; font-weight: 700; letter-spacing: 1.2px;
-    color: var(--ink-soft); text-transform: uppercase;
-  }
-  .card h2 .ico { font-size: 15px; filter: saturate(1.1); }
 
-  /* ---------- now playing ---------- */
-  .track { font-size: 22px; font-weight: 800; letter-spacing: .3px; line-height: 1.35; }
-  .artist { color: var(--ink-soft); margin-top: 2px; font-size: 13px; }
+  .label {
+    margin: 0 0 var(--sp-3);
+    color: var(--ink-3);
+    font-size: var(--fs-label);
+    font-weight: 700;
+    letter-spacing: .08em;
+  }
+
+  /* ---------------- now playing ---------------- */
+  .track {
+    margin: 0; font-size: var(--fs-hero); font-weight: 700;
+    letter-spacing: -.015em; line-height: 1.25;
+  }
+  .artist { margin: var(--sp-1) 0 0; color: var(--ink-2); font-size: var(--fs-body); }
   .line {
-    margin-top: 14px; padding: 16px 18px; border-radius: 16px; min-height: 28px;
-    background: linear-gradient(180deg, #fff7fb, #fff); border: 1.5px dashed var(--pink-line);
-    font-size: 19px; font-weight: 600; letter-spacing: 1.2px; color: #d4497e;
-    word-break: break-all;
+    margin-top: var(--sp-4);
+    min-height: 52px;
+    padding: var(--sp-3) 0;
+    font-size: var(--fs-lyric);
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: .01em;
+    color: var(--ink);
+    word-break: break-word;
   }
-  .progress { height: 9px; background: #fdeef4; border-radius: 999px; margin-top: 16px; overflow: hidden; }
+  .progress {
+    height: 4px; background: var(--line); border-radius: var(--r-pill);
+    margin-top: var(--sp-4); overflow: hidden;
+  }
   .progress > i {
-    display: block; height: 100%; width: 0; border-radius: 999px;
-    background: linear-gradient(90deg, #ff9dbe, #b9a8ff 60%, #7fdcff);
-    transition: width .3s linear;
-    box-shadow: 0 0 12px rgba(255, 140, 180, .45);
+    display: block; height: 100%; width: 0;
+    background: var(--accent); border-radius: var(--r-pill);
+    transition: width 300ms linear;
   }
-  .meta { display: flex; justify-content: space-between; color: var(--ink-faint); font-size: 12px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .meta {
+    display: flex; justify-content: space-between;
+    margin-top: var(--sp-2); color: var(--ink-3);
+    font-size: var(--fs-meta); font-family: var(--mono);
+  }
 
-  /* ---------- buttons ---------- */
-  .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; align-items: center; }
+  /* ---------------- controls ---------------- */
+  .actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-4); }
   button {
-    font: inherit; font-weight: 600; color: var(--ink); cursor: pointer;
-    background: #fff; border: 1px solid var(--line); border-radius: 12px;
-    padding: 9px 16px; transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
-    box-shadow: 0 3px 10px rgba(180, 160, 200, .10);
+    font: inherit; font-size: var(--fs-body); font-weight: 600;
+    height: 40px; padding: 0 var(--sp-4);
+    color: var(--ink); background: var(--surface);
+    border: 1px solid var(--line-strong); border-radius: var(--r-md);
+    cursor: pointer;
+    transition: background-color var(--dur) var(--ease),
+                border-color var(--dur) var(--ease),
+                color var(--dur) var(--ease),
+                transform 120ms var(--ease);
   }
-  button:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(255, 150, 190, .22); background: #fffafc; }
-  button:active { transform: translateY(0); }
-  button:disabled { opacity: .45; cursor: default; transform: none; box-shadow: none; }
+  button:hover { background: #f7f7fb; border-color: #d3d3de; }
+  button:active { transform: scale(.985); }
+  button:disabled { opacity: .45; cursor: default; transform: none; }
   button.primary {
-    color: #fff; border: none;
-    background: linear-gradient(135deg, #ff86ad, #a58cff 70%, #6fc9ff);
-    box-shadow: 0 8px 20px rgba(255, 130, 175, .35);
+    background: var(--accent); border-color: var(--accent); color: #fff;
   }
-  button.primary:hover { box-shadow: 0 12px 26px rgba(255, 130, 175, .45); }
-  button.ghost { color: #d0497c; border-color: var(--pink-line); background: #fff6fa; }
+  button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  button.ghost { color: var(--accent); border-color: #ded7ff; background: var(--accent-weak); }
+  button.ghost:hover { background: #e7e1ff; }
 
-  /* ---------- form ---------- */
-  label.field { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 13px; white-space: nowrap; }
-  label.field.wide { grid-column: 1 / -1; }
-  label.field.wide input[type=file] { flex: 1; min-width: 0; }
+  /* ---------------- forms ---------------- */
+  .field { display: flex; align-items: center; gap: var(--sp-2); color: var(--ink-2); font-size: var(--fs-meta); white-space: nowrap; }
+  .field.wide { grid-column: 1 / -1; }
+  .field.wide input[type=file] { flex: 1; min-width: 0; }
   select, input[type=number], input[type=file] {
-    font: inherit; color: var(--ink); background: #fff; border: 1px solid var(--line);
-    border-radius: 10px; padding: 7px 10px; box-shadow: inset 0 1px 2px rgba(190, 170, 210, .08);
+    font: inherit; font-size: var(--fs-body);
+    color: var(--ink); background: var(--surface);
+    border: 1px solid var(--line-strong); border-radius: var(--r-md);
+    height: 36px; padding: 0 var(--sp-3);
   }
-  input[type=number] { width: 84px; }
-  input[type=range] { accent-color: var(--pink); width: 130px; }
-  input[type=checkbox] { accent-color: var(--pink); width: 16px; height: 16px; }
-  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
-  .hint { color: var(--ink-faint); font-size: 12px; margin-top: 10px; line-height: 1.7; }
+  input[type=number] { width: 88px; font-family: var(--mono); }
+  input[type=range] { accent-color: var(--accent); width: 132px; }
+  input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3); }
+  .hint { margin: var(--sp-3) 0 0; color: var(--ink-3); font-size: var(--fs-meta); line-height: 1.7; }
 
-  /* ---------- status lists ---------- */
-  .kv { display: grid; grid-template-columns: 92px 1fr; gap: 8px 12px; font-size: 13px; }
-  .kv > span:nth-child(odd) { color: var(--ink-faint); }
+  /* ---------------- status lists ---------------- */
+  .kv { display: grid; grid-template-columns: 88px 1fr; gap: var(--sp-2) var(--sp-3); margin: 0; font-size: var(--fs-body); }
+  .kv dt { color: var(--ink-3); }
+  .kv dd { margin: 0; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
   .ok { color: var(--ok); font-weight: 600; }
   .no { color: var(--warn); font-weight: 600; }
   .bad { color: var(--err); font-weight: 600; }
-  a.link { color: #cf4a7e; text-decoration: none; border-bottom: 1.5px dotted #f0b6cc; }
-  a.link:hover { color: #ff5f97; border-bottom-color: #ff5f97; }
+  a.link { color: var(--accent); text-decoration: none; border-bottom: 1px solid #d9d1ff; }
+  a.link:hover { border-bottom-color: var(--accent); }
 
-  /* ---------- banner ---------- */
-  .banner {
-    position: relative; margin-bottom: 14px; padding: 14px 16px 14px 18px; border-radius: 14px;
-    background: linear-gradient(135deg, #fff6e9, #fff0f6 70%);
-    border: 1px solid #ffdfc2; color: #7a5a3c; font-size: 13px; line-height: 1.8;
+  /* ---------------- notice ---------------- */
+  .notice {
+    margin-bottom: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-md);
+    background: var(--accent-weak);
+    color: #3c3268;
+    font-size: var(--fs-meta);
+    line-height: 1.8;
   }
-  .banner::before {
-    content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 4px;
-    border-radius: 4px; background: linear-gradient(180deg, #ffb84d, #ff7aa8);
-  }
-  .banner b { color: #d4497e; }
-  .banner ol { margin: 8px 0 0 20px; padding: 0; }
-  .banner li { margin: 2px 0; }
+  .notice b { color: var(--accent); font-weight: 700; }
+  .notice ol { margin: var(--sp-2) 0 0; padding-left: 18px; }
+  .notice li { margin: 2px 0; }
 
-  /* ---------- assets ---------- */
-  .asset-editor { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 16px; }
-  @media (max-width: 780px) { .asset-editor { grid-template-columns: minmax(0, 1fr); } }
-  .asset-preview-panel { min-width: 0; }
-  .asset-controls { min-width: 0; }
+  /* ---------------- asset editor ---------------- */
+  .asset-editor { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: var(--sp-5); }
+  @media (max-width: 840px) { .asset-editor { grid-template-columns: minmax(0, 1fr); } }
+  .asset-preview-panel, .asset-controls { min-width: 0; }
   .screen-frame {
-    position: relative; padding: 14px; border-radius: 16px;
-    background: linear-gradient(180deg, #232030, #17151f);
-    box-shadow: inset 0 0 0 1px #3c364d, 0 12px 26px rgba(60, 40, 80, .22);
+    position: relative; padding: var(--sp-3);
+    border-radius: var(--r-md);
+    background: #14131a;
+    border: 1px solid #26242f;
   }
   .screen-frame canvas {
-    display: block; width: 100%; height: auto; image-rendering: pixelated;
-    border-radius: 8px; background: #0b0a10; cursor: grab;
+    display: block; width: 100%; height: auto;
+    image-rendering: pixelated; border-radius: 6px;
+    background: #0b0a10; cursor: grab;
   }
   .screen-frame canvas.dragging { cursor: grabbing; }
   .screen-empty {
-    position: absolute; inset: 14px; display: grid; place-items: center;
-    color: #8f88a0; font-size: 13px; border: 1px dashed #4c4560; border-radius: 8px;
+    position: absolute; inset: var(--sp-3);
+    display: grid; place-items: center;
+    color: #8b86a0; font-size: var(--fs-meta);
+    border: 1px dashed #3b3849; border-radius: 6px;
     background: rgba(11, 10, 16, .55);
   }
-  .asset-bar-wrap { height: 8px; background: #fdeef4; border-radius: 999px; margin-top: 14px; overflow: hidden; }
-  .asset-bar-wrap > i { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, #ffb3cd, #a9e7d3); }
-  .asset-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--ink-faint); font-size: 12px; margin-top: 10px; }
+  .asset-bar-wrap { height: 4px; background: var(--line); border-radius: var(--r-pill); margin-top: var(--sp-4); overflow: hidden; }
+  .asset-bar-wrap > i { display: block; height: 100%; width: 0; background: var(--accent); }
+  .asset-meta {
+    display: flex; justify-content: space-between; gap: var(--sp-3);
+    margin-top: var(--sp-2); color: var(--ink-3);
+    font-size: var(--fs-meta); font-family: var(--mono);
+  }
 
-  /* ---------- logs ---------- */
+  /* ---------------- logs ---------------- */
   pre#logs {
-    margin: 0; max-height: 300px; overflow: auto; border-radius: 14px;
-    background: #fbfaff; border: 1px solid var(--line); padding: 14px;
-    font: 12px/1.7 "Cascadia Mono", Consolas, "Courier New", monospace; color: #625b74;
+    margin: 0; padding: var(--sp-3);
+    max-height: 300px; overflow: auto;
+    background: #f7f7fb; border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    font: 12px/1.7 var(--mono); color: var(--ink-2);
     white-space: pre-wrap;
   }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-thumb { background: #f3d7e4; border-radius: 10px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb { background: #dedee8; border-radius: 10px; border: 3px solid transparent; background-clip: content-box; }
   ::-webkit-scrollbar-track { background: transparent; }
 
-  footer { text-align: center; color: var(--ink-faint); font-size: 12px; margin-top: 26px; }
-  footer b { color: #d4497e; font-weight: 600; }
+  footer {
+    display: flex; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap;
+    margin-top: var(--sp-5); padding-top: var(--sp-4);
+    border-top: 1px solid var(--line);
+    color: var(--ink-3); font-size: var(--fs-meta);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <div class="logo">♪</div>
-    <h1>halobar <small>花再 PixelBar 歌词控制台</small></h1>
-    <div class="chips">
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">♪</div>
+      <div>
+        <h1>halobar</h1>
+        <p class="sub">花再 PixelBar 歌词控制台</p>
+      </div>
+    </div>
+    <div class="status">
       <span id="state" class="chip">读取中…</span>
       <span id="source" class="chip">-</span>
       <span id="ver" class="chip">v-</span>
     </div>
   </header>
 
-  <div class="grid">
-    <!-- 左列 -->
-    <div class="col">
-      <section class="card">
-        <h2><span class="ico">🎵</span>正在播放</h2>
-        <div id="track" class="track">未检测到播放</div>
-        <div id="artist" class="artist">—</div>
-        <div class="line" id="line">—</div>
-        <div class="progress"><i id="bar"></i></div>
-        <div class="meta"><span id="pos">0:00</span><span id="dur">0:00</span></div>
-        <div class="row">
-          <button id="btn-toggle" class="primary">暂停同步</button>
-          <button id="btn-restore" class="ghost">恢复屏幕</button>
-          <button id="btn-minus">−0.5s</button>
-          <button id="btn-plus">+0.5s</button>
-          <button id="btn-next">对齐下一句</button>
-        </div>
-        <div class="hint">微调只影响本地时钟；接入精确进度源时，偏差会在下一次采样被纠正。</div>
-      </section>
+  <main class="bento">
+    <section class="card span-7">
+      <p class="label">正在播放</p>
+      <h2 id="track" class="track">未检测到播放</h2>
+      <p id="artist" class="artist">—</p>
+      <div class="line" id="line">—</div>
+      <div class="progress"><i id="bar"></i></div>
+      <div class="meta"><span id="pos">0:00</span><span id="dur">0:00</span></div>
+      <div class="actions">
+        <button id="btn-toggle" class="primary">暂停同步</button>
+        <button id="btn-restore">恢复屏幕</button>
+        <button id="btn-minus">−0.5s</button>
+        <button id="btn-plus">+0.5s</button>
+        <button id="btn-next">对齐下一句</button>
+      </div>
+      <p class="hint">微调只影响本地时钟；接入精确进度源时，偏差会在下一次采样被纠正。</p>
+    </section>
 
-      <section class="card">
-        <h2><span class="ico">🖼️</span>自定义像素屏</h2>
-        <div class="asset-editor">
-          <div class="asset-preview-panel">
-            <div class="screen-frame">
-              <canvas id="asset-canvas" width="1024" height="128"></canvas>
-              <div class="screen-empty" id="asset-empty">选择一张图片开始编辑</div>
-            </div>
-            <div class="asset-meta">
-              <span id="asset-info">尚未选择图片</span>
-              <span id="asset-progress"></span>
-            </div>
-            <div class="asset-bar-wrap"><i id="asset-bar"></i></div>
-            <div class="hint">拖动预览可平移，滚轮缩放。屏幕上「亮点」就是黑色以外的部分——先在这里调到满意，再上传。</div>
+    <section class="card span-5" id="env-card">
+      <p class="label">环境与插件</p>
+      <div id="env-banner" class="notice" hidden></div>
+      <dl class="kv">
+        <dt>网易云</dt><dd id="env-netease">检测中…</dd>
+        <dt>BetterNCM</dt><dd id="env-bncm">检测中…</dd>
+        <dt>精确进度</dt><dd id="env-sixk">检测中…</dd>
+        <dt>TempoHub</dt><dd id="env-tempo">检测中…</dd>
+      </dl>
+      <div class="actions">
+        <button id="btn-shortcut">创建桌面快捷方式</button>
+      </div>
+      <p class="hint" id="shortcut-hint" style="margin-top:8px"></p>
+    </section>
+
+    <section class="card span-12">
+      <p class="label">自定义像素屏</p>
+      <div class="asset-editor">
+        <div class="asset-preview-panel">
+          <div class="screen-frame">
+            <canvas id="asset-canvas" width="1024" height="128"></canvas>
+            <div class="screen-empty" id="asset-empty">选择一张图片开始编辑</div>
           </div>
-          <div class="asset-controls">
-            <label class="field wide">图片 / GIF
-              <input type="file" id="asset-file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif">
+          <div class="asset-bar-wrap"><i id="asset-bar"></i></div>
+          <div class="asset-meta">
+            <span id="asset-info">尚未选择图片</span>
+            <span id="asset-progress"></span>
+          </div>
+          <p class="hint">拖动预览可平移，滚轮缩放。亮着的点就是屏幕上会亮的部分。</p>
+        </div>
+        <div class="asset-controls">
+          <label class="field wide">图片 / GIF
+            <input type="file" id="asset-file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif">
+          </label>
+          <div class="grid-2" style="margin-top:12px">
+            <label class="field">适配
+              <select id="asset-fit">
+                <option value="contain">完整显示</option>
+                <option value="cover">铺满裁切</option>
+                <option value="stretch">拉伸填满</option>
+              </select>
             </label>
-            <div class="grid-2">
-              <label class="field">适配
-                <select id="asset-fit">
-                  <option value="contain">完整显示</option>
-                  <option value="cover">铺满裁切</option>
-                  <option value="stretch">拉伸填满</option>
-                </select>
-              </label>
-              <label class="field">缩放
-                <input type="range" id="asset-zoom" min="0.4" max="3.5" step="0.05" value="1">
-                <span id="asset-zoom-val">100%</span>
-              </label>
-              <label class="field">阈值
-                <input type="range" id="asset-threshold" min="0" max="255" value="128">
-                <span id="asset-threshold-val">128</span>
-              </label>
-              <label class="field">亮度
-                <input type="range" id="asset-brightness" min="-100" max="100" value="0">
-                <span id="asset-brightness-val">0</span>
-              </label>
-              <label class="field">对比度
-                <input type="range" id="asset-contrast" min="0.2" max="3" step="0.05" value="1">
-                <span id="asset-contrast-val">1.0</span>
-              </label>
-              <label class="field">反色 <input type="checkbox" id="asset-invert"></label>
-              <label class="field">抖动 <input type="checkbox" id="asset-dither"></label>
-              <label class="field">设为待机画面 <input type="checkbox" id="asset-standby" checked></label>
-              <label class="field">上传后暂停歌词 <input type="checkbox" id="asset-pause"></label>
-            </div>
-            <div class="row">
-              <button id="btn-upload" class="primary">上传到音箱</button>
-              <button id="btn-showasset">立即显示</button>
-              <button id="btn-reset-view">重置视图</button>
-              <button id="btn-sample" class="ghost">载入示例图</button>
-            </div>
+            <label class="field">缩放
+              <input type="range" id="asset-zoom" min="0.4" max="3.5" step="0.05" value="1">
+              <span id="asset-zoom-val">100%</span>
+            </label>
+            <label class="field">阈值
+              <input type="range" id="asset-threshold" min="0" max="255" value="128">
+              <span id="asset-threshold-val">128</span>
+            </label>
+            <label class="field">亮度
+              <input type="range" id="asset-brightness" min="-100" max="100" value="0">
+              <span id="asset-brightness-val">0</span>
+            </label>
+            <label class="field">对比度
+              <input type="range" id="asset-contrast" min="0.2" max="3" step="0.05" value="1">
+              <span id="asset-contrast-val">1.0</span>
+            </label>
+            <label class="field">反色 <input type="checkbox" id="asset-invert"></label>
+            <label class="field">抖动 <input type="checkbox" id="asset-dither"></label>
+            <label class="field">设为待机画面 <input type="checkbox" id="asset-standby" checked></label>
+            <label class="field">上传后暂停歌词 <input type="checkbox" id="asset-pause"></label>
+          </div>
+          <div class="actions">
+            <button id="btn-upload" class="primary">上传到音箱</button>
+            <button id="btn-showasset">立即显示</button>
+            <button id="btn-reset-view">重置视图</button>
+            <button id="btn-sample" class="ghost">载入示例图</button>
           </div>
         </div>
-        <div class="hint">256×32 单色、最多 8 帧、每帧 ≥100ms。GIF 预览为首帧，动画请上传后在音箱上查看。上传会覆盖音箱里的自定义场景槽，官方原图需用 TempoHub / App 重新发送。</div>
-      </section>
+      </div>
+      <p class="hint">256×32 单色、最多 8 帧、每帧 ≥100ms。GIF 预览为首帧，动画上传后在音箱上查看。上传会覆盖音箱里的自定义场景槽，官方原图需用 TempoHub / App 重新发送。</p>
+    </section>
 
-      <section class="card">
-        <h2><span class="ico">📝</span>日志</h2>
-        <pre id="logs">加载中…</pre>
-      </section>
-    </div>
+    <section class="card span-6">
+      <p class="label">显示设置</p>
+      <div class="grid-2">
+        <label class="field">对齐
+          <select id="align">
+            <option value="center">居中</option>
+            <option value="left">左对齐</option>
+            <option value="right">右对齐</option>
+            <option value="justify">两端对齐</option>
+          </select>
+        </label>
+        <label class="field">歌词动画
+          <select id="animation">
+            <option value="">关闭</option>
+            <option value="0">动画 1</option>
+            <option value="1">动画 2</option>
+            <option value="2">动画 3</option>
+            <option value="3">动画 4</option>
+            <option value="4">动画 5</option>
+          </select>
+        </label>
+        <label class="field">长句处理
+          <select id="line-mode">
+            <option value="page">分页淡入</option>
+            <option value="scroll">横向滚动</option>
+            <option value="first">只显示首屏</option>
+          </select>
+        </label>
+        <label class="field">长句滚动 <input type="checkbox" id="scroll_long"></label>
+        <label class="field">暂停待机（秒） <input type="number" id="standby" min="0" max="600" step="5"></label>
+      </div>
+      <div class="actions"><button id="btn-save" class="primary">保存设置</button></div>
+      <p class="hint">分页淡入会把长句按屏幕宽度切开，切换时使用设备的淡入动画；横向滚动为设备原生跑马灯。</p>
+    </section>
 
-    <!-- 右列 -->
-    <div class="col">
-      <section class="card" id="env-card">
-        <h2><span class="ico">🌸</span>环境与插件</h2>
-        <div id="env-banner" class="banner" hidden></div>
-        <div class="kv">
-          <span>网易云</span><span id="env-netease">检测中…</span>
-          <span>BetterNCM</span><span id="env-bncm">检测中…</span>
-          <span>精确进度</span><span id="env-sixk">检测中…</span>
-          <span>TempoHub</span><span id="env-tempo">检测中…</span>
-        </div>
-        <div class="row">
-          <button id="btn-shortcut">创建桌面快捷方式</button>
-          <span class="hint" id="shortcut-hint"></span>
-        </div>
-      </section>
+    <section class="card span-6">
+      <p class="label">设备</p>
+      <dl class="kv">
+        <dt>连接</dt><dd id="conn">-</dd>
+        <dt>固件</dt><dd id="fw">-</dd>
+        <dt>进度源</dt><dd id="src2">-</dd>
+        <dt>歌词源</dt><dd id="lsrc">-</dd>
+      </dl>
+    </section>
 
-      <section class="card">
-        <h2><span class="ico">🎀</span>显示设置</h2>
-        <div class="grid-2">
-          <label class="field">对齐
-            <select id="align">
-              <option value="center">居中</option>
-              <option value="left">左对齐</option>
-              <option value="right">右对齐</option>
-              <option value="justify">两端对齐</option>
-            </select>
-          </label>
-          <label class="field">歌词动画
-            <select id="animation">
-              <option value="">关闭</option>
-              <option value="0">动画 1</option>
-              <option value="1">动画 2</option>
-              <option value="2">动画 3</option>
-              <option value="3">动画 4</option>
-              <option value="4">动画 5</option>
-            </select>
-          </label>
-          <label class="field">长句滚动 <input type="checkbox" id="scroll_long"></label>
-          <label class="field">长句处理
-            <select id="line-mode">
-              <option value="page">分页淡入</option>
-              <option value="scroll">横向滚动</option>
-              <option value="first">只显示首屏</option>
-            </select>
-          </label>
-          <label class="field">暂停待机（秒） <input type="number" id="standby" min="0" max="600" step="5"></label>
-        </div>
-        <div class="row"><button id="btn-save" class="primary">保存设置</button></div>
-        <div class="hint">长句滚动只对单包能装下的句子生效（约 16 汉字以内）；更长的句子会按时间切片。</div>
-      </section>
+    <section class="card span-12">
+      <p class="label">日志</p>
+      <pre id="logs">加载中…</pre>
+    </section>
+  </main>
 
-      <section class="card">
-        <h2><span class="ico">🔌</span>设备</h2>
-        <div class="kv">
-          <span>连接</span><span id="conn">-</span>
-          <span>固件</span><span id="fw">-</span>
-          <span>进度源</span><span id="src2">-</span>
-          <span>歌词源</span><span id="lsrc">-</span>
-        </div>
-      </section>
-    </div>
-  </div>
-
-  <footer>halobar · 非官方工具 · 与漫步者 / 花再无关 · <span id="buildline">dev build</span></footer>
+  <footer>
+    <span>halobar · 非官方工具 · 与漫步者 / 花再无关</span>
+    <span id="buildline" style="font-family:var(--mono)">dev build</span>
+  </footer>
 </div>
 
 <script>
