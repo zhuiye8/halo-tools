@@ -6,7 +6,7 @@
 
 把正在播放的歌词，送到桌面音箱的那条像素屏上。
 
-[![CI](https://github.com/zhuiye8/halo-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/zhuiye8/halo-tools/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/zhuiye8/halo-tools?color=ff7aa8)](https://github.com/zhuiye8/halo-tools/releases/latest)
 [![License](https://img.shields.io/github/license/zhuiye8/halo-tools?color=ff7aa8)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-8f8bff)
 ![Python](https://img.shields.io/badge/python-3.12-6fb7ff)
@@ -86,6 +86,7 @@ python -m halobar run          # 托盘 + 控制台
 python -m halobar probe        # 读设备状态
 python -m halobar lyrics --title 如愿 --artist 王菲
 python -m pytest               # 单元测试，不需要硬件
+python scripts/build.ps1       # 打包：dist/halobar-v<版本>-win64.zip
 ```
 
 代码分成几块：`device/` 是 HID 协议与屏幕操作，`media.py` 读进度，`lyrics.py` 负责取词与解析，`sync.py` 是同步引擎，`service.py` 串起后台线程，`server.py` 与 `web/` 是控制台。所有对设备的写操作都经过 `service.py` 里的单一线程，避免并发写坏屏幕。
