@@ -71,7 +71,7 @@ def test_console_requires_token_and_serves_status():
         assert "state" in payload and "settings" in payload
 
         page = urllib.request.urlopen(f"{base}/", timeout=5).read().decode()
-        assert token in page and "halobar 控制台" in page
+        assert token in page and "halobar" in page and "正在播放" in page
     finally:
         console.stop()
 
