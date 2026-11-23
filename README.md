@@ -1,164 +1,110 @@
-# halobar — 花再 Halo PixelBar 歌词与自定义像素屏
+<div align="center">
 
-Windows 桌面工具，把当前播放歌曲的歌词实时显示在「花再 Halo PixelBar」的 256×32 单色点阵屏上，并支持上传自定义图片/动画。
+<img src="docs/icon.png" width="96" alt="halobar">
 
-> 非官方项目，与漫步者 / 花再无隶属关系。所有写入均为设备公开协议，不刷固件。
+<h1>halobar</h1>
 
-## 当前状态
+把正在播放的歌词，送到桌面音箱的那条像素屏上。
 
-| 能力 | 状态 |
-| --- | --- |
-| USB HID 设备层（握手 / 版本 / 状态 / 文字 / 布局 / 快照恢复） | ✅ 实机验证（固件 1.1.1） |
-| SMTC 媒体会话读取（标题 / 歌手 / 播放状态 / 时间轴） | ✅ 实机验证 |
-| 6K Labs 本地进度源（`GET 127.0.0.1:9863/query`，需插件） | ✅ 实机验证（真实进度、歌曲 ID、时长、封面） |
-| 网易云匿名取词（搜索 + LRC + 翻译 + 本地缓存） | ✅ 实机验证 |
-| 歌词同步引擎（分段 / 时钟 / 暂停待机 / 退出恢复） | ✅ 实机跑通 |
-| 自定义点阵上传（256×32，1–8 帧） | ✅ 实机验证（控制台上传，静态 1.2 s / 3 帧 3.2 s） |
-| 网页控制台（状态 / 命令 / 设置 / 日志） | ✅ 实机验证（`127.0.0.1:8765`，token 保护） |
-| 托盘（状态 / 暂停 / 恢复 / 打开控制台） | ✅ 可用（原生菜单，外观朴素） |
-| 蓝牙控制 | ❌ 固件限制：切到蓝牙输入后 USB HID 消失，只能逆向杰理 SPP |
+[![CI](https://github.com/zhuiye8/halo-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/zhuiye8/halo-tools/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/zhuiye8/halo-tools?color=ff7aa8)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-8f8bff)
+![Python](https://img.shields.io/badge/python-3.12-6fb7ff)
 
-## 快速开始
+<img src="docs/console-light.png" width="780" alt="控制台截图">
 
-```powershell
-python -m pip install -e ".[media,dev]"   # winrt 投影 + pytest
+</div>
 
-python -m halobar run                      # 托盘 + 网页控制台（右键图标：暂停/恢复/退出）
-python -m halobar run --no-tray --seconds 10   # 无界面跑 10 秒（冒烟测试）
-python -m halobar run --no-console         # 只要托盘，不起网页控制台
-python -m halobar probe                    # 读固件/状态/两个文字槽
-python -m halobar lyrics --title 如愿 --artist 王菲   # 只取词，不写设备
-python -m halobar demo --seconds 60        # 一次性同步（退出自动恢复屏幕）
-python -m halobar watch --seconds 10       # 观察当前进度源
-```
+---
 
-托盘菜单：当前曲目状态、暂停/继续同步、恢复屏幕（停止跟随）、打开控制台、退出。
-`run` 启动时会保存屏幕快照，退出（含 Ctrl+C / 托盘退出）自动恢复。
+## 这是什么
 
-网页控制台在启动时打印带 token 的地址（`http://127.0.0.1:8765/?token=…`），
-也可以从托盘菜单「打开控制台」直接进入。控制台只监听 127.0.0.1。
+halobar 是给「漫步者 / 花再 Halo PixelBar」写的一个 Windows 小工具，主要做两件事：
 
-## 数据与日志
+- 把当前播放的歌词，实时显示在音箱那条 256×32 的像素屏上；
+- 允许把任意图片或 GIF 传上去，当待机画面，或者只是摆着好看。
 
-程序目录可以只读，所有运行时数据都在 `%LOCALAPPDATA%\halobar`：
+音箱本身只有九种内置场景、自创文字最多 16 个字，官方歌词功能又只对手机蓝牙开放。这个项目补的就是这两个缺口：桌面端也能看歌词，屏幕内容也不再被官方素材限制。
 
-| 路径 | 内容 |
-| --- | --- |
-| `settings.json` | 控制台 token、端口、对齐/动画/待机画面等偏好（重启保留） |
-| `logs\halobar.log` | 滚动日志（5 MB × 3） |
-| `logs\crash.log` | 未捕获异常（崩溃）记录 |
-| `cache\lyrics\` | 歌词缓存 |
-| `assets\` | 上传到音箱的原始素材 |
+它不刷固件，只用设备公开的 HID 命令写显示内容。程序启动时会记下你原来的画面，退出时还原。
 
-单实例运行：已经有一个实例时，再次双击只会把控制台打开，不会抢设备。
-控制台地址固定（token 持久化），可以直接加书签。
-桌面快捷方式：控制台顶部「创建桌面快捷方式」按钮，或托盘菜单同名项。
+## 下载
 
-## 架构
+> 首个版本还在打包，完成后会放在 [Releases](https://github.com/zhuiye8/halo-tools/releases)。在那之前请从源码运行，见文末「开发」。
 
-```
-halobar/
-├── app.py             CLI（probe / lyrics / demo / watch）
-├── device/
-│   ├── protocol.py    帧格式、校验、命令码、UTF-8 安全截断
-│   ├── transport.py   Win32 HID（ctypes，无第三方依赖）
-│   └── screen.py      高层 API：状态、文字槽、布局、快照/恢复
-├── media.py           Windows SMTC 会话读取（6K Labs 优先，SMTC 次之）
-├── sixk.py            6K Labs 本地 HTTP 进度源（/query）
-├── lyrics.py          LRC 解析、网易云匿名客户端、缓存
-├── sync.py            分段、进度时钟、同步引擎
-├── service.py         后台服务（单写者、重连、状态快照、退出恢复）
-├── server.py          本地网页控制台（127.0.0.1，token 保护）
-├── web/index.html     控制台页面（原生 HTML/JS，无框架）
-└── tray.py            托盘（pystray，菜单与状态显示）
-tests/                 协议 / 解析 / 引擎单元测试（无硬件）
-probe/                 早期协议验证脚本（保留作参考）
-```
+发布包是免安装的 zip：解压到任意目录，双击 `halobar.exe` 就可以了。不需要装 Python，也不需要管理员权限。桌面上的快捷方式可以在控制台里一键创建。
 
-设计约束（为了可维护）：
+第一次运行时 Windows 可能提示"未知发布者"，因为程序没有代码签名；点"更多信息 → 仍要运行"即可。如果杀软拦截，把 `halobar.exe` 加白名单。
 
-1. **单一数据源**：协议常量集中在 `device/protocol.py`，不再散落在脚本里。
-2. **可替换传输层**：`Screen` 只依赖 `transport.write/read`，测试用假屏幕即可跑引擎。
-3. **写入即校验**：文字写入有 `2F CC` 专用 ACK；布局/快照恢复回读状态。
-4. **失败不重试**：设备状态不确定时宁可报错，也不重复写（避免把屏幕写坏）。
-5. **无 OCR、无内存读取**：不依赖客户端版本，不需要改客户端。
+## 它需要什么
 
-## 已验证的协议事实
+硬件是一台 Halo PixelBar，通过 USB 连电脑，并切到声卡输入（指示灯红色）。目前只在固件 1.1.1 上完整验证过。
 
-| 项 | 值 |
-| --- | --- |
-| USB | VID `2D99` / PID `A160`，usage page `0xFF14`，64 字节报告 |
-| 握手 / 固件 | `0x65` → 协议 2；`0xC6` → `1.1.1` |
-| 文字 | `0xE7` 读 / `0xE8` 写；载荷 `[slot, len, utf8...]`，单包 **≤50 字节**（官方规格 48） |
-| 文字槽 | `0x00` 自创文字（max 16 字）、`0x0E` 歌词槽（报 max 80 字） |
-| 布局 | `0xEF`：`[1,R,G,B,0,2,0,align,0xFF]` 静态 / `[1,R,G,B,0,2,1,dir,0xFF]` 滚动 |
-| 歌词动画 | `0xEF`：`[1,R,G,B,0,0,1,0,preset]`，preset 0–4 |
-| 场景 | `0xEF`：`[2,R,G,B,0,1,category,option,template]`（9 类内置场景） |
-| 状态 | `0xEE` 返回 12 字节：`[0]=0, [1..3]=RGB, [4]=组合, [5]=模式, [6]=类别, [7]=选项, [8]=模板, [9..11]=音乐选项` |
-| 点阵上传 | `0x17` 分包（设备给 50 字节/包），单帧 1064 字节 ≈1.2 s，8 帧 ≈9.2 s，切场景瞬时 |
+软件分两种情况：
 
-## 精确进度模式（可选，需要装客户端插件）
+**只想显示歌词。** 开箱即用。程序通过 Windows 的媒体会话（SMTC）读取播放信息，进度靠本地时钟推算。网易云这一版不上报播放进度，所以拖动进度条之后歌词会偏，这时用控制台里的 ±0.5s 和"对齐下一句"手动纠正。
 
-网易云自己上报的 SMTC **没有时间轴**，所以默认使用「自建时钟」兜底。若想要播放器给出的真实进度（拖动、卡顿都准确），按下面三步给**官网安装版**网易云装上插件链：
+**希望进度永远准确。** 需要给官网版网易云装一条插件链，让播放器把真实进度暴露出来：
 
-| 步骤 | 做什么 | 链接 |
-| --- | --- | --- |
-| 0 | 换成官网安装版（MSIX/Store 版无法注入） | https://music.163.com/#/download |
-| 1 | 装 BetterNCM（插件框架） | https://github.com/std-microblock/BetterNCM-Installer/releases/latest |
-| 2 | 装 InfLink-rs（给网易云补 SMTC 进度与会话 API） | https://github.com/apoint123/inflink-rs/releases/latest |
-| 3 | 装 6K Labs（本地 HTTP：`GET 127.0.0.1:9863/query`） | https://github.com/lgc2333/BetterNCM-6K-Labs/tree/dist |
+1. 确认用的是[官网安装版](https://music.163.com/#/download)。Microsoft Store 版本装在受保护目录里，没法注入插件。
+2. 安装 [BetterNCM](https://github.com/std-microblock/BetterNCM-Installer/releases/latest)，装的时候选中网易云的安装目录。
+3. 把 [InfLink-rs](https://github.com/apoint123/inflink-rs/releases/latest) 的 `.plugin` 放进 BetterNCM 的插件目录。
+4. 把 [6K Labs](https://github.com/lgc2333/BetterNCM-6K-Labs/tree/dist) 也放进去，重启网易云。
 
-验证：`python probe/query_9863.py 3`，能打印 `hasSong=True` 与递增的 `pos` 即成功。
+装好后控制台的「环境与插件」会显示为"在线（真实进度）"，歌词会跟着播放器走，暂停、拖动、切歌都不再需要手动校正。这几步在控制台里也能看到，带链接和实时状态。
 
-装好后 `halobar` 自动优先使用 6K Labs（`media.read_playback` 内部顺序：6K Labs → SMTC → 时钟）。插件返回的 `track.id` 形如 `NCM-1888381008`，可用来精确取词、免去搜索匹配。
+其他播放器（QQ 音乐、Spotify、浏览器等）只要正常上报媒体会话就能用，精度取决于播放器本身是否提供时间轴。
 
-> 风险提示：DLL 注入会被部分杀软/反作弊误报；网易云大版本更新后插件可能失效需重装。不装插件不影响基础功能。
+## 使用
 
-## 素材工作台（自定义像素屏）
+双击 `halobar.exe` 之后，程序会缩到托盘，并在浏览器打开控制台（`127.0.0.1`，只监听本机）。
 
-控制台里的「自定义像素屏」卡片：
+托盘菜单里可以暂停同步、恢复屏幕、打开控制台、创建桌面快捷方式。控制台里可以看当前歌词、调整对齐和动画、上传自定义像素屏、查看日志。
 
-1. 选择 PNG / JPG / BMP / WebP / GIF（GIF 最多 8 帧，每帧 ≥100ms）；
-2. 调整「适配」（完整显示 / 铺满裁切 / 拉伸）、阈值、反色、抖动；
-3. 点「上传到音箱」，页面会显示进度与上传后的预览；
-4. 勾选「设为待机画面」后，暂停/间奏时会自动切到这张图；「立即显示」可马上切过去。
+关掉浏览器不会停止运行；从托盘退出才会恢复屏幕并释放设备。
 
-限制与代价：
+程序不会开机自启。想让它出现得早一点，把快捷方式放进启动文件夹就行。
 
-- 上传会**覆盖音箱里的自定义场景槽**（静态用 category 3，动画用 category 6），原始内容需回 TempoHub / App 重新发送；
-- 静态图约 1.2 秒、8 帧动画约 9 秒（设备每包 50 字节，逐包确认）；
-- 上传过程中歌词同步会暂停，完成后恢复。
+## 一些说明
 
-## 显示行为
+**关于覆盖场景。** 上传图片会覆盖音箱里的自定义场景槽。官方原图要用 TempoHub 或手机 App 重新发送。
 
-| 情形 | 行为 |
-| --- | --- |
-| 单句较窄（≤14 个半角格） | 静态显示，对齐方式可调 |
-| 单句较宽但单包能装下（≤48 字节，约 16 汉字） | 固件原生右→左滚动 |
-| 单句超过 48 字节 | 按行内时间比例切片轮显，切片切换借用设备淡入动画 |
-| 前奏 / 间奏 4–10 秒 | 清空歌词文字（不留上一句） |
-| 前奏 / 间奏 >10 秒 | 切回待机场景（默认内置 Waves），下一句自动切回歌词 |
-| 暂停超过 20 秒 | 切回待机场景 |
-| 歌词里的制作人 / 演唱者标注行 | 过滤（含 `作词 :`、`祝青：`、`G2er` 这类） |
+**关于 TempoHub。** 它和本程序会抢同一个 USB 设备。同时运行可能互相覆盖画面，建议二选一。
 
-## 已知限制
+**关于歌词容量。** 单次写入最多 48 字节（约 16 个汉字）。短句静态显示，稍宽的句子走设备自带的滚动，更长的句子按时间切片轮显。
 
-- **网易云没有播放进度**：它会上报 SMTC 会话（`cloudmusic.exe`），但 `TimelineProperties` 全为 0。当前回退为「自建时钟 + 播放/暂停采样」，拖动进度条后会漂移，可用 `--offset` 或后续的微调快捷键修正。
-- **TempoHub 抢设备**：官方 PC 客户端会独占 HID 并写入歌词槽。同时运行会出现"两个程序抢屏"，建议二选一（我们正在做设备互斥检测）。
-- **蓝牙不可控屏**：切换到蓝牙输入后 `USB\VID_2D99&PID_A160` 从系统消失，只剩音频通道。
-- **点阵上传会覆盖自定义场景槽**，原始内容需回 TempoHub / App 重新发送。
+**关于数据位置。** 配置、日志、歌词缓存都在 `%LOCALAPPDATA%\halobar`，删掉这个目录就等于恢复出厂设置。
 
 ## 开发
 
 ```powershell
-python -m pytest -q          # 21 个单元测试，无需硬件
-python -m halobar probe      # 需要设备
+git clone https://github.com/zhuiye8/halo-tools.git
+cd halo-tools
+python -m pip install -e ".[media,dev]"
+
+python -m halobar run          # 托盘 + 控制台
+python -m halobar probe        # 读设备状态
+python -m halobar lyrics --title 如愿 --artist 王菲
+python -m pytest               # 单元测试，不需要硬件
 ```
 
-提交前请保证 `pytest` 全绿；协议相关改动必须补充对应的单元测试。
+代码分成几块：`device/` 是 HID 协议与屏幕操作，`media.py` 读进度，`lyrics.py` 负责取词与解析，`sync.py` 是同步引擎，`service.py` 串起后台线程，`server.py` 与 `web/` 是控制台。所有对设备的写操作都经过 `service.py` 里的单一线程，避免并发写坏屏幕。
 
-## 相关项目
+协议细节、实测记录和一些取舍写在 [调研与方案](docs/HaloPixelBar-歌词可视化-调研与方案.md) 里。
 
-- [XFEstudio/HaloPixelToolBox](https://github.com/XFEstudio/HaloPixelToolBox)（MIT）：协议与业务参考
-- [trlanfeng/OpenHaloPixelBar](https://github.com/trlanfeng/OpenHaloPixelBar)：点阵上传协议实现
-- [WXRIW/Lyricify-Lyrics-Helper](https://github.com/WXRIW/Lyricify-Lyrics-Helper)：取词与匹配策略参考
+## 致谢
+
+协议和取词方式来自这些项目的工作：
+
+- [XFEstudio/HaloPixelToolBox](https://github.com/XFEstudio/HaloPixelToolBox)
+- [trlanfeng/OpenHaloPixelBar](https://github.com/trlanfeng/OpenHaloPixelBar)
+- [WXRIW/Lyricify-Lyrics-Helper](https://github.com/WXRIW/Lyricify-Lyrics-Helper)
+- [lgc2333/BetterNCM-6K-Labs](https://github.com/lgc2333/BetterNCM-6K-Labs) 与 [apoint123/inflink-rs](https://github.com/apoint123/inflink-rs)
+
+## 免责声明
+
+这是个人项目，与漫步者（EDIFIER）、花再没有隶属关系，也没有获得授权或背书。
+
+程序通过逆向协议与设备通信，不保证在所有批次、所有固件上都正常。使用前请自行评估风险，因使用本程序造成的设备异常或数据丢失，作者不承担责任。
+
+[MIT](LICENSE)

@@ -25,19 +25,43 @@ except ImportError:  # pragma: no cover
 
 
 def make_icon_image(size: int = 64):
-    """Draw a small pixel-bar glyph (no external asset needed)."""
-    image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    """Draw the app icon: a rounded pink→violet tile with five pixel bars."""
+    supersample = 4
+    side = size * supersample
+    image = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+
+    # vertical gradient background
+    top = (255, 138, 178)
+    bottom = (146, 128, 255)
+    pixels = image.load()
+    for y in range(side):
+        t = y / max(1, side - 1)
+        colour = tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3))
+        for x in range(side):
+            pixels[x, y] = (*colour, 255)
+
+    # rounded corners
+    mask = Image.new("L", (side, side), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        [0, 0, side - 1, side - 1], radius=int(side * 0.26), fill=255)
+    image.putalpha(mask)
+
+    # five equaliser bars, bottom aligned
     draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle([4, 18, size - 4, size - 18], radius=8, fill=(28, 30, 38, 255))
-    pattern = [0b1010, 0b0101, 0b1110, 0b0101, 0b1010]
-    cell = (size - 16) // 10
-    for row, bits in enumerate(pattern):
-        for col in range(10):
-            if bits >> (col % 4) & 1:
-                x = 8 + col * cell
-                y = 24 + row * cell
-                draw.rectangle([x, y, x + cell - 1, y + cell - 1], fill=(240, 180, 200, 255))
-    return image
+    count = 5
+    margin = side * 0.19
+    gap = side * 0.055
+    bar_width = (side - 2 * margin - (count - 1) * gap) / count
+    base = side * 0.79
+    heights = (0.34, 0.58, 0.78, 0.52, 0.30)
+    for index, ratio in enumerate(heights):
+        left = margin + index * (bar_width + gap)
+        top_y = base - side * ratio
+        draw.rounded_rectangle(
+            [left, top_y, left + bar_width, base],
+            radius=bar_width / 2.3, fill=(255, 255, 255, 236))
+
+    return image.resize((size, size), Image.LANCZOS)
 
 
 def _menu_text(status: ServiceStatus) -> str:
