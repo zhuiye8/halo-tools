@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field, replace
@@ -58,6 +59,12 @@ class ServiceStatus:
     asset_category: int = 0
     asset_option: int = 0
     asset_time: float = 0.0
+    update_state: str = "idle"          # idle | checking | available | none | downloading | ready | error
+    update_version: str = ""
+    update_notes: str = ""
+    update_url: str = ""
+    update_progress: float = 0.0
+    update_error: str = ""
     updated_at: float = field(default_factory=time.time)
 
 
@@ -92,6 +99,9 @@ class ServiceConfig:
     interlude_clear_after: float = 4.0
     interlude_scene_after: float = 10.0
     standby_scene_option: int = 0
+    auto_check_updates: bool = True
+    update_proxy: str = "auto"
+    update_check_hours: float = 6.0
 
 
 class LyricsService:
@@ -125,6 +135,10 @@ class LyricsService:
         self._upload_job: UploadJob | None = None
         self._uploading = False
         self._scene_request: tuple[int, int] | None = None
+        self._update_thread: threading.Thread | None = None
+        self._update_check_requested = threading.Event()
+        self._update_apply_requested = threading.Event()
+        self._release = None
 
     # ------------------------------------------------------------------ control
     def start(self) -> None:
@@ -133,6 +147,9 @@ class LyricsService:
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, name="halobar-service", daemon=True)
         self._thread.start()
+        self._update_thread = threading.Thread(target=self._update_worker,
+                                               name="halobar-updates", daemon=True)
+        self._update_thread.start()
 
     def stop(self, timeout: float = 5.0) -> None:
         self._stop.set()
@@ -191,6 +208,78 @@ class LyricsService:
         )
         log.info("asset uploaded: %s (%d frames, scene %d/%d)",
                  job.name, job.frames, job.category, job.option)
+
+    # ---------------------------------------------------------------- updates
+    def request_update_check(self) -> None:
+        self._update_check_requested.set()
+
+    def request_update_apply(self) -> None:
+        self._update_apply_requested.set()
+
+    def _update_worker(self) -> None:
+        from . import update as update_module
+
+        time.sleep(4)
+        while not self._stop.is_set():
+            try:
+                if self.config.auto_check_updates or self._update_check_requested.is_set():
+                    self._update_check_requested.clear()
+                    self._check_updates(update_module)
+                if self._update_apply_requested.is_set():
+                    self._update_apply_requested.clear()
+                    self._perform_update(update_module)
+            except Exception as exc:  # noqa: BLE001 - the updater must never crash the app
+                log.warning("update worker: %s", exc)
+                self._set_status(update_state="error", update_error=str(exc))
+            deadline = time.monotonic() + max(0.25, self.config.update_check_hours) * 3600
+            while time.monotonic() < deadline and not self._stop.is_set():
+                if (self._update_check_requested.is_set()
+                        or self._update_apply_requested.is_set()):
+                    break
+                time.sleep(0.5)
+
+    def _check_updates(self, update_module) -> None:
+        from . import __version__
+
+        self._set_status(update_state="checking", update_error="")
+        release = update_module.check(current=__version__, proxy=self.config.update_proxy)
+        self._release = release
+        if release is None:
+            self._set_status(update_state="none", update_version="", update_notes="")
+            log.info("no update available (current %s)", __version__)
+            return
+        self._set_status(
+            update_state="available",
+            update_version=release.version,
+            update_notes=release.notes[:4000],
+            update_url=release.html_url,
+        )
+        log.info("update available: %s", release.version)
+
+    def _perform_update(self, update_module) -> None:
+        from .settings import app_dir
+
+        release = self._release
+        if release is None:
+            self._check_updates(update_module)
+            release = self._release
+        if release is None or not release.available:
+            raise update_module.UpdateError("没有可用的更新包")
+
+        update_dir = app_dir() / "updates"
+        zip_path = update_dir / release.asset_name
+        self._set_status(update_state="downloading", update_progress=0.0)
+        update_module.download(release, zip_path, proxy=self.config.update_proxy,
+                               progress=lambda value: self._set_status(update_progress=value))
+        staging = update_dir / f"staging-{release.version}"
+        update_module.extract(zip_path, staging)
+        self._set_status(update_state="ready", update_progress=1.0)
+
+        log.info("restarting into the updater for %s", release.version)
+        self._set_status(update_state="applying")
+        update_module.launch_updater(staging)
+        self.stop()
+        os._exit(0)
 
     def update_config(self, *, align: str | None = None, animation: int | None | str = "keep",
                       scroll_long_lines: bool | None = None,

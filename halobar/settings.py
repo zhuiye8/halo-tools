@@ -68,6 +68,8 @@ class Settings:
     animation: int | None = None
     scroll_long_lines: bool = True
     line_mode: str = "page"
+    auto_check_updates: bool = True
+    update_proxy: str = "auto"
     standby_after: float = 20.0
     standby_scene: int | None = 8
     standby_scene_option: int = 0

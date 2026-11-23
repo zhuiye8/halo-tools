@@ -157,6 +157,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         standby_after=config.standby_after,
         scroll_long_lines=config.scroll_long_lines,
         line_mode=config.line_mode,
+        auto_check_updates=config.auto_check_updates,
+        update_proxy=config.update_proxy,
     ))
 
     console = None
@@ -195,6 +197,38 @@ def cmd_run(args: argparse.Namespace) -> int:
         if console is not None:
             console.stop()
         guard.release()
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    """Check for a newer release, and optionally download + install it."""
+    from . import update as update_module
+    from .settings import app_dir
+
+    print(f"当前版本 {__version__}")
+    try:
+        release = update_module.check(proxy=args.proxy)
+    except update_module.UpdateError as exc:
+        print(f"检查更新失败：{exc}")
+        return 1
+    if release is None:
+        print("已经是最新版本")
+        return 0
+    print(f"发现新版本 {release.version}（{release.asset_name}，"
+          f"{release.asset_size / 1024 / 1024:.1f} MB）")
+    print(release.html_url)
+    if not args.apply:
+        print("使用 --apply 下载并安装")
+        return 0
+    target = app_dir() / "updates" / release.asset_name
+    print("下载中…")
+    update_module.download(release, target, proxy=args.proxy,
+                           progress=lambda value: print(f"\r  {value * 100:5.1f}%", end=""))
+    print()
+    staging = target.parent / f"staging-{release.version}"
+    update_module.extract(target, staging)
+    update_module.launch_updater(staging)
+    print("更新程序已启动，请退出当前实例以完成替换")
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -242,6 +276,12 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--allow-second", action="store_true",
                      help="run even if another instance is already running (debug)")
     run.set_defaults(func=cmd_run)
+
+    update = sub.add_parser("update", help="check for / install a newer release")
+    update.add_argument("--check", action="store_true", help="only check (default)")
+    update.add_argument("--apply", action="store_true", help="download and install")
+    update.add_argument("--proxy", default="auto", help="auto | none | http://host:port")
+    update.set_defaults(func=cmd_update)
     return parser
 
 

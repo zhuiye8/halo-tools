@@ -106,6 +106,8 @@ class ConsoleServer:
             "scroll_long_lines": config.scroll_long_lines,
             "line_mode": config.line_mode,
             "page_units": config.page_units,
+            "auto_check_updates": config.auto_check_updates,
+            "update_proxy": config.update_proxy,
             "standby_after": config.standby_after,
             "standby_scene": config.standby_scene,
         }
@@ -158,6 +160,12 @@ class ConsoleServer:
             self.settings.standby_after = config.standby_after
             self.settings.standby_scene = config.standby_scene
             self.settings.standby_scene_option = config.standby_scene_option
+            if payload.get("auto_check_updates") is not None:
+                self.settings.auto_check_updates = bool(payload.get("auto_check_updates"))
+                self.service.config.auto_check_updates = self.settings.auto_check_updates
+            if payload.get("update_proxy") in ("auto", "none"):
+                self.settings.update_proxy = payload["update_proxy"]
+                self.service.config.update_proxy = payload["update_proxy"]
             self.settings.save()
         return HTTPStatus.OK, {"ok": True, "status": self.status_payload()}
 
@@ -172,6 +180,15 @@ class ConsoleServer:
             self.settings.create_shortcut_done = True
             self.settings.save()
         return HTTPStatus.OK, {"ok": True, "path": str(link)}
+
+    # ------------------------------------------------------------------ update
+    def handle_update_check(self) -> tuple[int, dict]:
+        self.service.request_update_check()
+        return HTTPStatus.OK, {"ok": True}
+
+    def handle_update_apply(self) -> tuple[int, dict]:
+        self.service.request_update_apply()
+        return HTTPStatus.OK, {"ok": True}
 
     # ------------------------------------------------------------------- assets
     def handle_asset_upload(self, payload: dict) -> tuple[int, dict]:
@@ -331,6 +348,10 @@ def _make_handler(server: ConsoleServer):
                 status, data = server.handle_asset_display(payload)
             elif path == "/api/shortcut":
                 status, data = server.handle_shortcut()
+            elif path == "/api/update/check":
+                status, data = server.handle_update_check()
+            elif path == "/api/update/apply":
+                status, data = server.handle_update_apply()
             else:
                 status, data = HTTPStatus.NOT_FOUND, {"error": "not found"}
             self._json(status, data)
