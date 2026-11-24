@@ -71,6 +71,7 @@ class Settings:
     lyric_lang: str = "original"       # original | translation | bilingual
     theme: str = "system"              # system | light | dark
     color: list[int] | None = None     # [R, G, B] or None to follow device
+    color_calibration: bool = True     # sRGB -> linear PWM gamma correction for LEDs
     auto_check_updates: bool = True
     update_proxy: str = "auto"
     standby_after: float = 20.0

@@ -154,6 +154,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             align=Align(config.align),
             animation=config.animation,
             color=tuple(config.color) if config.color and len(config.color) == 3 else None,
+            color_calibration=config.color_calibration,
             standby_scene=config.standby_scene,
             standby_scene_option=config.standby_scene_option,
             standby_after=config.standby_after,

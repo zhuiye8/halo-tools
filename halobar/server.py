@@ -129,6 +129,7 @@ class ConsoleServer:
             "align": config.align.value,
             "animation": config.animation,
             "color": list(config.color) if config.color is not None else None,
+            "color_calibration": config.color_calibration,
             "scroll_long_lines": config.scroll_long_lines,
             "line_mode": config.line_mode,
             "lyric_lang": config.lyric_lang,
@@ -202,7 +203,8 @@ class ConsoleServer:
     def handle_settings(self, payload: dict) -> tuple[int, dict]:
         kwargs: dict[str, object] = {}
         for key in ("align", "scroll_long_lines", "line_mode", "lyric_lang",
-                    "page_units", "standby_after", "standby_scene_option"):
+                    "page_units", "standby_after", "standby_scene_option",
+                    "color_calibration"):
             if key in payload and payload[key] is not None:
                 kwargs[key] = payload[key]
         if "animation" in payload:
@@ -231,6 +233,7 @@ class ConsoleServer:
             self.settings.apply_animation(config.animation)
             self.settings.apply_lyric_lang(config.lyric_lang)
             self.settings.apply_color(config.color)
+            self.settings.color_calibration = config.color_calibration
             self.settings.scroll_long_lines = config.scroll_long_lines
             self.settings.line_mode = config.line_mode
             self.settings.standby_after = config.standby_after

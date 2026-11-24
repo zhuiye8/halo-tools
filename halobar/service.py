@@ -28,7 +28,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Callable, Protocol
 
-from .device.screen import Align, DisplaySnapshot, RenderError, Screen, Scroll
+from .device.screen import Align, DisplaySnapshot, RenderError, Screen, Scroll, gamma_correct_rgb
 from .lyrics import Lyrics, NeteaseClient
 from .media import Playback, PlaybackReader
 from .sync import EngineConfig, LyricsEngine
@@ -101,6 +101,7 @@ class ServiceConfig:
     scroll: Scroll | None = None
     animation: int | None = None
     color: tuple[int, int, int] | None = None
+    color_calibration: bool = True
     standby_scene: int | None = 8
     standby_after: float = 20.0
     poll_seconds: float = 0.1
@@ -229,6 +230,11 @@ class LyricsService:
         with self._lock:
             self._reset_offset_requested = True
 
+    def _hardware_color(self, rgb: tuple[int, int, int] | None) -> tuple[int, int, int] | None:
+        if rgb is None:
+            return None
+        return gamma_correct_rgb(rgb) if self.config.color_calibration else rgb
+
     def request_color(self, rgb: tuple[int, int, int] | None) -> None:
         """Set or clear the PixelBar RGB text/accent colour."""
         with self._lock:
@@ -244,9 +250,10 @@ class LyricsService:
                 max(0, min(255, int(rgb[2]))),
             )
             self.config.color = clean
-            self._color_request = clean
+            hw_rgb = self._hardware_color(clean)
+            self._color_request = hw_rgb
             if self._engine is not None:
-                self._engine.config.color = clean
+                self._engine.config.color = hw_rgb
                 self._engine.force_redraw()
             self._status = replace(self._status, color=clean, updated_at=time.time())
 
@@ -465,6 +472,7 @@ class LyricsService:
         standby_scene: int | None | str = "keep",
         standby_scene_option: int | None = None,
         color: list[int] | tuple[int, int, int] | None | str = "keep",
+        color_calibration: bool | None = None,
     ) -> None:
         """Apply live settings from the console."""
         with self._lock:
@@ -511,6 +519,10 @@ class LyricsService:
                 if not 0 <= opt <= 255:
                     raise ValueError("standby_scene_option must be 0..255")
                 self.config.standby_scene_option = opt
+            if color_calibration is not None:
+                self.config.color_calibration = bool(color_calibration)
+                if self.config.color is not None:
+                    self._color_request = self._hardware_color(self.config.color)
             if color != "keep":
                 if color is None:
                     self.config.color = None
@@ -523,7 +535,7 @@ class LyricsService:
                         max(0, min(255, int(color[2]))),  # type: ignore[index]
                     )
                     self.config.color = clean
-                    self._color_request = clean
+                    self._color_request = self._hardware_color(clean)
                     self._status = replace(self._status, color=clean, updated_at=time.time())
             engine = self._engine
             if engine is not None:
@@ -536,7 +548,7 @@ class LyricsService:
                 engine.config.standby_after = self.config.standby_after
                 engine.config.standby_scene = self.config.standby_scene
                 engine.config.standby_scene_option = self.config.standby_scene_option
-                engine.config.color = self.config.color
+                engine.config.color = self._hardware_color(self.config.color)
                 engine.force_redraw()
 
     def request_restore(self) -> None:
@@ -652,13 +664,16 @@ class LyricsService:
 
         self._screen = screen
         self._snapshot = snapshot
+        hw_color = self._hardware_color(self.config.color)
+        if hw_color is not None:
+            self._color_request = hw_color
         self._engine = LyricsEngine(screen, EngineConfig(
             poll_seconds=self.config.poll_seconds,
             media_poll_seconds=self.config.media_poll_seconds,
             align=self.config.align,
             scroll=self.config.scroll,
             animation=self.config.animation,
-            color=self.config.color,
+            color=hw_color,
             standby_scene=self.config.standby_scene,
             standby_scene_option=self.config.standby_scene_option,
             standby_after=self.config.standby_after,

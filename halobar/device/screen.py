@@ -141,6 +141,36 @@ class DisplaySnapshot:
             return None
 
 
+def gamma_correct_rgb(
+    rgb: tuple[int, int, int],
+    gamma: float = 2.2,
+    white_balance: tuple[float, float, float] = (1.0, 0.58, 0.62),
+) -> tuple[int, int, int]:
+    """Map sRGB colour to linear PWM LED drive with white-balance & peak brightness.
+
+    Halo PixelBar's SMD RGB LEDs drive R/G/B linearly and have noticeably higher
+    blue/green luminous efficacy than red.  Combining gamma 2.2 with per-channel
+    white balance ``(1.0, 0.58, 0.62)`` and preserving the dominant channel's
+    brightness keeps colours bright, saturated, and true to hue (e.g.
+    ``#F0B4C8`` -> ``(240, 74, 100)``).  Pure greys/white stay untouched for
+    maximum brightness.
+    """
+    r, g, b = (max(0, min(255, int(c))) for c in rgb)
+    if r == g == b:
+        return (r, g, b)
+    peak = max(r, g, b)
+    lin = [((c / 255.0) ** gamma) * wb for c, wb in zip((r, g, b), white_balance)]
+    lin_peak = max(lin)
+    if lin_peak <= 0.0:
+        return (0, 0, 0)
+    scale = peak / lin_peak
+    return (
+        max(0, min(255, int(round(lin[0] * scale)))),
+        max(0, min(255, int(round(lin[1] * scale)))),
+        max(0, min(255, int(round(lin[2] * scale)))),
+    )
+
+
 def _encode_text_state(source: int, text: str) -> bytes:
     """Payload to replay a text slot verbatim during restore."""
     raw = text.encode("utf-8")
@@ -155,6 +185,8 @@ class Screen:
         self.transport = transport or WinHidTransport()
         self.protocol_version = 0
         self.firmware = ""
+        self._lyric_overlay_active = False
+        self._active_layout: tuple[object, ...] | None = None
         try:
             self._handshake()
         except Exception:
@@ -264,28 +296,85 @@ class Screen:
         self._send(protocol.CMD_SCREEN_SET, bytes([1, *rgb, 0, 0, 0, 0xFF, 0xFF]))
 
     def set_color(self, rgb: tuple[int, int, int]) -> None:
-        self._send(protocol.CMD_SCREEN_SET, bytes([3, *rgb]))
+        """Set pixel screen RGB via ``0xEF`` action 3 (full 9-byte frame).
 
-    def show_scene(self, category: int, option: int = 0, template: int = 0xFF) -> None:
-        rgb = self.state().rgb
+        Verified on firmware 1.1.1: action 1 (layout) and action 2 (scene) ignore
+        RGB bytes, so action 3 is the authoritative colour command.
+        """
+        r, g, b = (max(0, min(255, int(c))) for c in rgb)
+        self._send(protocol.CMD_SCREEN_SET, bytes([3, r, g, b, 0, 0, 0xFF, 0xFF, 0xFF]))
+
+    def show_scene(
+        self,
+        category: int,
+        option: int = 0,
+        template: int = 0xFF,
+        color: tuple[int, int, int] | None = None,
+    ) -> None:
+        if self._lyric_overlay_active:
+            try:
+                self.set_text("", source=protocol.TEXT_SOURCE_LYRIC)
+            except RenderError:
+                pass
+            self.disable_lyric_overlay(color=color)
+            self._lyric_overlay_active = False
+        self._active_layout = None
+        if color is not None:
+            self.set_color(color)
+            rgb = color
+        else:
+            rgb = self.state().rgb
         self._send(protocol.CMD_SCREEN_SET, bytes([2, *rgb, 0, 1, category, option, template]))
 
     def show_text(
         self,
         text: str,
         *,
-        source: int = protocol.TEXT_SOURCE_CUSTOM,
+        source: int | None = None,
         align: Align | None = Align.CENTER,
         scroll: Scroll | None = None,
         animation: int | None = None,
         color: tuple[int, int, int] | None = None,
     ) -> str:
-        """Layout + text in one call (the order the firmware expects)."""
+        """Layout + text in one call (the order the firmware expects).
+
+        When ``animation`` (0..4) is selected, the firmware's native lyric
+        animations only trigger on ``TEXT_SOURCE_LYRIC`` (0x0E).  Switching into
+        the lyric overlay clears custom slot 0x00 and pauses briefly so the
+        firmware applies ``0xEF`` before receiving ``0xE8``; unchanged layouts
+        skip redundant ``0xEF`` writes.
+        """
+        import time as _time
+
         if animation is not None:
-            self.set_layout(animation=animation, color=color)
-        else:
+            target = protocol.TEXT_SOURCE_LYRIC if source is None else source
+            layout_key = ("anim", target, animation)
+            if self._active_layout != layout_key:
+                if target == protocol.TEXT_SOURCE_LYRIC and not self._lyric_overlay_active:
+                    try:
+                        self.set_text("", source=protocol.TEXT_SOURCE_CUSTOM)
+                    except RenderError:
+                        pass
+                self.set_layout(animation=animation, color=color)
+                self._active_layout = layout_key
+                self._lyric_overlay_active = target == protocol.TEXT_SOURCE_LYRIC
+                _time.sleep(0.08)
+            return self.set_text(text, source=target)
+
+        target = protocol.TEXT_SOURCE_CUSTOM if source is None else source
+        layout_key = ("text", target, align, scroll)
+        if self._active_layout != layout_key:
+            if self._lyric_overlay_active and target == protocol.TEXT_SOURCE_CUSTOM:
+                try:
+                    self.set_text("", source=protocol.TEXT_SOURCE_LYRIC)
+                except RenderError:
+                    pass
+                self.disable_lyric_overlay(color=color)
+                self._lyric_overlay_active = False
+                _time.sleep(0.05)
             self.set_layout(align=align, scroll=scroll, color=color)
-        return self.set_text(text, source=source)
+            self._active_layout = layout_key
+        return self.set_text(text, source=target)
 
     def clear_text(self, source: int = protocol.TEXT_SOURCE_CUSTOM) -> None:
         self.set_text("", source=source)
@@ -371,13 +460,18 @@ class Screen:
     def restore(self, snapshot: DisplaySnapshot, timeout_s: float = 2.0) -> None:
         """Replay a snapshot and verify the state read-back.
 
-        Two writes are required on firmware 1.1.1: the music-visualiser options
-        (bytes 9..11, ``0xEF`` action 1) and the scene/text mode (action 2).  The
-        firmware applies a scene switch asynchronously, so verification is polled.
+        On firmware 1.1.1 three writes are required:
+        1. action 3 to restore RGB (actions 1 & 2 ignore RGB bytes);
+        2. action 1 to restore music-visualiser options (bytes 9..11);
+        3. action 2 to restore the scene/text mode.
         """
+        self._active_layout = None
+        self._lyric_overlay_active = False
         for slot in (snapshot.text_custom, snapshot.text_lyric):
             if len(slot) >= 2:
                 self._send(protocol.CMD_TEXT_SET, bytes([slot[0], len(slot) - 2]) + slot[2:])
+        if len(snapshot.state) >= 4:
+            self.set_color((snapshot.state[1], snapshot.state[2], snapshot.state[3]))
         if len(snapshot.state) == 12:
             self._send(protocol.CMD_SCREEN_SET,
                        bytes([1]) + snapshot.state[1:4] + bytes([0, 0]) + snapshot.state[9:12])

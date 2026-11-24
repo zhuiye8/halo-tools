@@ -134,7 +134,7 @@ function renderMirror(status) {
 
   if (mode === 'text' && text) {
     mirrorOffCtx.fillStyle = '#fff';
-    mirrorOffCtx.font = '600 18px "Microsoft YaHei UI", "Segoe UI", sans-serif';
+    mirrorOffCtx.font = '700 20px "Microsoft YaHei UI", "Segoe UI", sans-serif';
     mirrorOffCtx.textAlign = 'center';
     mirrorOffCtx.textBaseline = 'middle';
     mirrorOffCtx.fillText(text, 128, 17, 248);
@@ -173,10 +173,10 @@ function renderMirror(status) {
   for (let y = 0; y < 32; y++) {
     for (let x = 0; x < 256; x++) {
       const idx = (y * 256 + x) * 4;
-      const on = src[idx] >= 96;
+      const on = src[idx] >= 72;
       if (on) {
         mirrorCtx.fillStyle = lit;
-        mirrorCtx.fillRect(x * 2, y * 2, 1.7, 1.7);
+        mirrorCtx.fillRect(x * 2, y * 2, 1.85, 1.85);
       } else if ((x & 1) === 0 && (y & 1) === 0) {
         mirrorCtx.fillStyle = dim;
         mirrorCtx.fillRect(x * 2, y * 2, 1, 1);
@@ -418,6 +418,7 @@ async function refresh() {
       $('auto-update').checked = s.settings.auto_check_updates !== false;
       $('update-proxy').value = s.settings.update_proxy || 'auto';
       $('autostart').checked = !!s.settings.autostart;
+      $('color-calibration').checked = s.settings.color_calibration !== false;
       if (s.settings.theme && s.settings.theme !== currentThemePref) {
         applyTheme(s.settings.theme);
       }
@@ -553,6 +554,11 @@ $('update-proxy').onchange = () => patchSettings({ update_proxy: $('update-proxy
 $('autostart').onchange = () => patchSettings(
   { autostart: $('autostart').checked },
   $('autostart').checked ? '已开启开机自启' : '已关闭开机自启',
+);
+
+$('color-calibration').onchange = () => patchSettings(
+  { color_calibration: $('color-calibration').checked },
+  $('color-calibration').checked ? '已开启 LED 色彩校正' : '已切换为原始 RGB 输出',
 );
 
 // Colour swatches + picker
