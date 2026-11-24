@@ -194,9 +194,10 @@ class LyricsService:
 
     def stop(self, timeout: float = 5.0) -> None:
         self._stop.set()
-        if self._thread:
+        current = threading.current_thread()
+        if self._thread and self._thread is not current:
             self._thread.join(timeout)
-        if self._update_thread:
+        if self._update_thread and self._update_thread is not current:
             self._update_thread.join(min(2.0, timeout))
         if self._playback_reader is not None:
             self._playback_reader.close()
@@ -456,7 +457,10 @@ class LyricsService:
         log.info("restarting into the updater for %s", release.version)
         self._set_status(update_state="applying")
         update_module.launch_updater(staging)
-        self.stop()
+        try:
+            self.stop()
+        except Exception:  # noqa: BLE001 - updater is already launched, must exit now
+            log.exception("service stop failed during update handoff")
         os._exit(0)
 
     def update_config(

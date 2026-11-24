@@ -290,3 +290,29 @@ def test_service_persists_per_track_offset_and_switches_candidate(tmp_path):
         assert user_settings.get_track_offset("测试歌曲\n测试歌手") == 0.0
     finally:
         service.stop()
+
+
+def test_service_stop_from_update_thread_does_not_raise():
+    """Calling service.stop() inside _update_thread (as _perform_update does) must not crash."""
+    screen = FakeScreen()
+    service = LyricsService(
+        ServiceConfig(poll_seconds=0.02, auto_check_updates=False),
+        screen_factory=lambda: screen,
+        reader=make_reader(),
+        lyrics_client=FakeLyricsClient(),
+    )
+    service.start()
+    errors: list[Exception] = []
+
+    def stop_as_updater():
+        service._update_thread = __import__("threading").current_thread()
+        try:
+            service.stop(timeout=2.0)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    t = __import__("threading").Thread(target=stop_as_updater)
+    t.start()
+    t.join(5.0)
+    assert not errors, f"stop() raised from update thread: {errors}"
+    assert service.status().running is False
