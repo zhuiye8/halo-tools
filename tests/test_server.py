@@ -189,6 +189,16 @@ def test_console_commands_and_settings():
             "action": "reset_offset",
         })
         assert status == 200
+
+        status, payload = fetch(f"{base}/api/ambient?token={token}", "POST", {
+            "enabled": True, "effect": 3, "rgb": [240, 180, 200], "brightness": 85, "speed": 6,
+        })
+        assert status == 200 and payload["ok"]
+        assert payload["status"]["ambient"]["effect"] == 3
+        assert payload["status"]["ambient"]["brightness"] == 85
+
+        status, payload = fetch(f"{base}/api/ambient?token={token}", "POST", {"effect": 99})
+        assert status == 400
     finally:
         console.stop()
 

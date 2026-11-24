@@ -192,6 +192,65 @@
           <label class="ctrl-label" for="standby">暂停待机（秒）</label>
           <input type="number" id="standby" class="mono" min="0" max="600" step="5" value="20">
         </div>
+
+        <div class="divider" style="margin:2px 0"></div>
+
+        <div class="ctrl-row">
+          <span class="label" style="margin:0">四周氛围灯带</span>
+          <div style="display:flex;gap:12px;align-items:center">
+            <label class="switch" style="font-size:12px">
+              <input type="checkbox" id="ambient-sync"> 同步屏幕色
+            </label>
+            <label class="switch" style="font-size:12px">
+              <input type="checkbox" id="ambient-power" checked> 开启
+            </label>
+          </div>
+        </div>
+
+        <div id="ambient-controls" class="ctrl-stack" style="gap:10px">
+          <div class="ctrl-row">
+            <label class="ctrl-label" for="ambient-effect">灯带模式</label>
+            <select id="ambient-effect">
+              <option value="1">呼吸</option>
+              <option value="3">常亮</option>
+              <option value="2">潮汐</option>
+              <option value="4">涟漪</option>
+              <option value="5">流光</option>
+              <option value="6">动感</option>
+            </select>
+          </div>
+
+          <div class="ctrl-row" id="ambient-color-row">
+            <span class="ctrl-label">灯带颜色</span>
+            <div class="swatches" id="ambient-swatches">
+              <button type="button" class="swatch" data-rgb="195,185,255" style="background:#c3b9ff" title="默认淡紫 #C3B9FF"></button>
+              <button type="button" class="swatch" data-rgb="240,180,200" style="background:#f0b4c8" title="樱花粉 #F0B4C8"></button>
+              <button type="button" class="swatch" data-rgb="255,255,255" style="background:#ffffff" title="纯白"></button>
+              <button type="button" class="swatch" data-rgb="56,189,248" style="background:#38bdf8" title="冰蓝"></button>
+              <button type="button" class="swatch" data-rgb="251,191,36" style="background:#fbbf24" title="暖琥珀"></button>
+              <button type="button" class="swatch" data-rgb="251,113,133" style="background:#fb7185" title="珊瑚粉"></button>
+              <label class="color-picker-wrap" title="自定义灯带 RGB">
+                <input type="color" id="ambient-color-picker" value="#c3b9ff">
+              </label>
+            </div>
+          </div>
+
+          <div class="ctrl-row">
+            <label class="ctrl-label" for="ambient-brightness">灯带亮度</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" id="ambient-brightness" min="0" max="100" step="5" value="100">
+              <span id="ambient-brightness-val" class="mono" style="width:36px;text-align:right;font-size:12px">100%</span>
+            </div>
+          </div>
+
+          <div class="ctrl-row" id="ambient-speed-row">
+            <label class="ctrl-label" for="ambient-speed">灯效速度</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" id="ambient-speed" min="1" max="10" step="1" value="8">
+              <span id="ambient-speed-val" class="mono" style="width:36px;text-align:right;font-size:12px">8</span>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 

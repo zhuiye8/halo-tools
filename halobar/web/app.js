@@ -335,6 +335,36 @@ function syncSwatches(rgb) {
   }
 }
 
+function syncAmbientUI(amb) {
+  if (!amb) return;
+  const enabled = amb.enabled !== false;
+  const effect = Number(amb.effect || 1);
+  $('ambient-power').checked = enabled;
+  $('ambient-controls').style.opacity = enabled ? '1' : '0.45';
+  if (document.activeElement !== $('ambient-effect')) {
+    $('ambient-effect').value = String(effect);
+  }
+  const rgb = amb.color || [195, 185, 255];
+  const key = Array.isArray(rgb) ? rgb.join(',') : '';
+  $('ambient-swatches').querySelectorAll('.swatch').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.rgb === key);
+  });
+  if (document.activeElement !== $('ambient-color-picker')) {
+    $('ambient-color-picker').value = rgbToHex(rgb);
+  }
+  if (document.activeElement !== $('ambient-brightness')) {
+    $('ambient-brightness').value = amb.brightness ?? 100;
+    $('ambient-brightness-val').textContent = `${amb.brightness ?? 100}%`;
+  }
+  if (document.activeElement !== $('ambient-speed')) {
+    $('ambient-speed').value = amb.speed ?? 8;
+    $('ambient-speed-val').textContent = String(amb.speed ?? 8);
+  }
+  // RGB applies to Breathing(1) and Static(3); Speed applies to Breathing(1) and Tide(2).
+  $('ambient-color-row').hidden = ![1, 3].includes(effect);
+  $('ambient-speed-row').hidden = ![1, 2].includes(effect);
+}
+
 async function refresh() {
   if (refreshInFlight) return;
   refreshInFlight = true;
@@ -419,10 +449,12 @@ async function refresh() {
       $('update-proxy').value = s.settings.update_proxy || 'auto';
       $('autostart').checked = !!s.settings.autostart;
       $('color-calibration').checked = s.settings.color_calibration !== false;
+      $('ambient-sync').checked = !!s.settings.ambient_sync_color;
       if (s.settings.theme && s.settings.theme !== currentThemePref) {
         applyTheme(s.settings.theme);
       }
       syncSwatches(s.settings.color || s.color);
+      syncAmbientUI(s.ambient);
     }
 
     const uploadPct = Math.round((s.upload_progress || 0) * 100);
@@ -576,6 +608,64 @@ $('color-picker').addEventListener('input', () => {
   syncSwatches(rgb);
   clearTimeout(colorDebounce);
   colorDebounce = setTimeout(() => command('color', { rgb }), 140);
+});
+
+// Surround ambient light strip controls
+async function updateAmbient(patch, toastText = '') {
+  const res = await api('/api/ambient', {
+    method: 'POST',
+    body: JSON.stringify(patch),
+  });
+  if (res.error) showToast(res.error, true);
+  else if (toastText) showToast(toastText);
+  if (res.status && res.status.ambient) syncAmbientUI(res.status.ambient);
+  else refresh();
+}
+
+$('ambient-power').onchange = () => {
+  const on = $('ambient-power').checked;
+  updateAmbient({ enabled: on }, on ? '氛围灯已开启' : '氛围灯已关闭');
+};
+
+$('ambient-sync').onchange = () => patchSettings(
+  { ambient_sync_color: $('ambient-sync').checked },
+  $('ambient-sync').checked ? '氛围灯将跟随屏幕颜色' : '已解除氛围灯颜色同步',
+);
+
+$('ambient-effect').onchange = () => {
+  const effect = Number($('ambient-effect').value);
+  const label = $('ambient-effect').selectedOptions[0]?.textContent || '';
+  updateAmbient({ enabled: true, effect }, `氛围灯：${label}`);
+};
+
+$('ambient-swatches').addEventListener('click', (e) => {
+  const btn = e.target.closest('.swatch');
+  if (!btn) return;
+  const rgb = btn.dataset.rgb.split(',').map(Number);
+  updateAmbient({ enabled: true, rgb }, `灯带颜色 ${rgbToHex(rgb).toUpperCase()}`);
+});
+
+let ambColorDebounce = null;
+$('ambient-color-picker').addEventListener('input', () => {
+  const rgb = hexToRgb($('ambient-color-picker').value);
+  clearTimeout(ambColorDebounce);
+  ambColorDebounce = setTimeout(() => updateAmbient({ enabled: true, rgb }), 160);
+});
+
+let ambBrightDebounce = null;
+$('ambient-brightness').addEventListener('input', () => {
+  const val = Number($('ambient-brightness').value);
+  $('ambient-brightness-val').textContent = `${val}%`;
+  clearTimeout(ambBrightDebounce);
+  ambBrightDebounce = setTimeout(() => updateAmbient({ enabled: true, brightness: val }), 160);
+});
+
+let ambSpeedDebounce = null;
+$('ambient-speed').addEventListener('input', () => {
+  const val = Number($('ambient-speed').value);
+  $('ambient-speed-val').textContent = String(val);
+  clearTimeout(ambSpeedDebounce);
+  ambSpeedDebounce = setTimeout(() => updateAmbient({ enabled: true, speed: val }), 160);
 });
 
 // ------------------------------------------------------------- env & updates

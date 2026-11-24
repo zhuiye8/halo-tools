@@ -59,6 +59,9 @@ class ServiceStatus:
     display_mode: str = "idle"          # idle | text | cleared | scene | standby | restored
     display_scene: int | None = None
     color: tuple[int, int, int] = (255, 255, 255)
+    ambient: dict[str, object] = field(default_factory=lambda: {
+        "enabled": True, "effect": 1, "color": [195, 185, 255], "brightness": 100, "speed": 8,
+    })
     clock_offset: float = 0.0
     lyric_index: int = -1
     lyric_count: int = 0
@@ -102,6 +105,7 @@ class ServiceConfig:
     animation: int | None = None
     color: tuple[int, int, int] | None = None
     color_calibration: bool = True
+    ambient_sync_color: bool = False
     standby_scene: int | None = 8
     standby_after: float = 20.0
     poll_seconds: float = 0.1
@@ -168,6 +172,7 @@ class LyricsService:
         self._uploading = False
         self._scene_request: tuple[int, int] | None = None
         self._color_request: tuple[int, int, int] | None = None
+        self._ambient_request: dict[str, object] | None = None
         self._update_thread: threading.Thread | None = None
         self._update_check_requested = threading.Event()
         self._update_apply_requested = threading.Event()
@@ -253,10 +258,64 @@ class LyricsService:
             self.config.color = clean
             hw_rgb = self._hardware_color(clean)
             self._color_request = hw_rgb
+            if self.config.ambient_sync_color and self._status.ambient.get("enabled", True):
+                self._queue_ambient_locked({"rgb": hw_rgb})
             if self._engine is not None:
                 self._engine.config.color = hw_rgb
                 self._engine.force_redraw()
             self._status = replace(self._status, color=clean, updated_at=time.time())
+
+    def _queue_ambient_locked(self, changes: dict[str, object]) -> None:
+        merged = dict(self._ambient_request or {})
+        merged.update(changes)
+        self._ambient_request = merged
+
+    def request_ambient(
+        self,
+        *,
+        enabled: bool | None = None,
+        effect: int | None = None,
+        rgb: tuple[int, int, int] | None = None,
+        brightness: int | None = None,
+        speed: int | None = None,
+    ) -> None:
+        """Queue an ambient light strip change for the single HID writer thread."""
+        changes: dict[str, object] = {}
+        if enabled is not None:
+            changes["enabled"] = bool(enabled)
+        if effect is not None:
+            val = int(effect)
+            if not 1 <= val <= 6:
+                raise ValueError("ambient effect must be 1..6")
+            changes["effect"] = val
+        if rgb is not None:
+            clean = (
+                max(0, min(255, int(rgb[0]))),
+                max(0, min(255, int(rgb[1]))),
+                max(0, min(255, int(rgb[2]))),
+            )
+            changes["rgb"] = self._hardware_color(clean)
+            changes["ui_rgb"] = list(clean)
+        if brightness is not None:
+            changes["brightness"] = max(0, min(100, int(brightness)))
+        if speed is not None:
+            changes["speed"] = max(1, min(10, int(speed)))
+        if not changes:
+            return
+        with self._lock:
+            self._queue_ambient_locked(changes)
+            cur = dict(self._status.ambient)
+            if "enabled" in changes:
+                cur["enabled"] = changes["enabled"]
+            if "effect" in changes:
+                cur["effect"] = changes["effect"]
+            if "ui_rgb" in changes:
+                cur["color"] = changes["ui_rgb"]
+            if "brightness" in changes:
+                cur["brightness"] = changes["brightness"]
+            if "speed" in changes:
+                cur["speed"] = changes["speed"]
+            self._status = replace(self._status, ambient=cur, updated_at=time.time())
 
     def media_diagnostics(self) -> dict[str, object]:
         if self._playback_reader is None:
@@ -477,6 +536,7 @@ class LyricsService:
         standby_scene_option: int | None = None,
         color: list[int] | tuple[int, int, int] | None | str = "keep",
         color_calibration: bool | None = None,
+        ambient_sync_color: bool | None = None,
     ) -> None:
         """Apply live settings from the console."""
         with self._lock:
@@ -527,6 +587,10 @@ class LyricsService:
                 self.config.color_calibration = bool(color_calibration)
                 if self.config.color is not None:
                     self._color_request = self._hardware_color(self.config.color)
+            if ambient_sync_color is not None:
+                self.config.ambient_sync_color = bool(ambient_sync_color)
+                if self.config.ambient_sync_color and self.config.color is not None:
+                    self._queue_ambient_locked({"rgb": self._hardware_color(self.config.color)})
             if color != "keep":
                 if color is None:
                     self.config.color = None
@@ -610,6 +674,20 @@ class LyricsService:
                             log.info("screen colour set to #%02x%02x%02x", *rgb)
                         except (RenderError, OSError) as exc:
                             self._set_status(last_error=str(exc))
+                if self._ambient_request is not None:
+                    with self._lock:
+                        req, self._ambient_request = self._ambient_request, None
+                    if req is not None and hasattr(self._screen, "set_ambient"):
+                        ui_rgb = req.pop("ui_rgb", None)
+                        try:
+                            amb = self._screen.set_ambient(**req)  # type: ignore[arg-type]
+                            amb_dict = amb.as_dict()
+                            if ui_rgb is not None:
+                                amb_dict["color"] = ui_rgb
+                            self._set_status(ambient=amb_dict)
+                            log.info("ambient light updated: %s", amb_dict)
+                        except (RenderError, OSError, ValueError) as exc:
+                            self._set_status(last_error=str(exc))
                 if self._scene_request is not None:
                     with self._lock:
                         req, self._scene_request = self._scene_request, None
@@ -666,6 +744,14 @@ class LyricsService:
         if self.config.color is None and hasattr(snapshot, "state") and len(snapshot.state) >= 4:
             device_rgb = (snapshot.state[1], snapshot.state[2], snapshot.state[3])
 
+        ambient_dict = dict(self._status.ambient)
+        if hasattr(screen, "ambient_state"):
+            try:
+                ambient_state = await loop.run_in_executor(None, screen.ambient_state)
+                ambient_dict = ambient_state.as_dict()
+            except Exception as exc:  # noqa: BLE001 - ambient query is optional
+                log.debug("ambient state query failed: %s", exc)
+
         self._screen = screen
         self._snapshot = snapshot
         hw_color = self._hardware_color(self.config.color)
@@ -694,7 +780,7 @@ class LyricsService:
         log.info("device connected (firmware %s)", screen.firmware)
         self._set_status(
             connected=True, firmware=screen.firmware, state="following",
-            color=device_rgb, last_error="",
+            color=device_rgb, ambient=ambient_dict, last_error="",
         )
         return True
 

@@ -50,6 +50,88 @@ class RenderError(RuntimeError):
     """Raised when the device rejects or fails to confirm a screen write."""
 
 
+AMBIENT_EFFECTS = {
+    1: "呼吸",
+    2: "潮汐",
+    3: "常亮",
+    4: "涟漪",
+    5: "流光",
+    6: "动感",
+}
+_AMBIENT_RGB_EFFECTS = {1, 3}
+_AMBIENT_SPEED_EFFECTS = {1, 2}
+_AMBIENT_POWER_SLOT = 7
+
+
+@dataclass(frozen=True)
+class AmbientState:
+    """Decoded ``0x6A`` ambient light strip state (A160 firmware 1.1.1).
+
+    Wire layout (44 bytes on A160)::
+
+        [0]     zone/device prefix (0x20 on A160, 0x13 on A106)
+        [1]     active effect id (1..6, or 7 when powered off)
+        [2..]   repeating 6-byte slots: <slot_id> <p1> <p2> <p3> <brightness> <speed>
+                slot 1 (breathing) / slot 3 (static): p1..p3 = R, G, B
+                slot 7 (power): p3 = 1 (on) / 0 (off)
+    """
+
+    prefix: int = 0x20
+    effect: int = 1
+    enabled: bool = True
+    rgb: tuple[int, int, int] = (195, 185, 255)
+    brightness: int = 100
+    speed: int = 8
+    slots: dict[int, bytes] = field(default_factory=dict)
+
+    @classmethod
+    def from_bytes(cls, payload: bytes) -> "AmbientState":
+        if len(payload) < 8:
+            raise RenderError(f"unexpected ambient state length {len(payload)}")
+        prefix = payload[0]
+        raw_effect = payload[1]
+        slots: dict[int, bytes] = {}
+        for off in range(2, len(payload) - 5, 6):
+            slot = bytes(payload[off:off + 6])
+            slots[slot[0]] = slot
+
+        power_slot = slots.get(_AMBIENT_POWER_SLOT)
+        enabled = raw_effect != _AMBIENT_POWER_SLOT and (
+            power_slot is None or power_slot[3] != 0
+        )
+        effect = raw_effect if raw_effect in AMBIENT_EFFECTS else 1
+
+        active_slot = slots.get(effect) or slots.get(1)
+        rgb_slot = (
+            slots.get(effect) if effect in _AMBIENT_RGB_EFFECTS else None
+        ) or slots.get(1) or slots.get(3)
+        rgb = (rgb_slot[1], rgb_slot[2], rgb_slot[3]) if rgb_slot else (195, 185, 255)
+        brightness = active_slot[4] if (active_slot and active_slot[4] <= 100) else 100
+        speed_slot = (
+            slots.get(effect) if effect in _AMBIENT_SPEED_EFFECTS else None
+        ) or slots.get(1)
+        speed = speed_slot[5] if (speed_slot and 1 <= speed_slot[5] <= 10) else 8
+
+        return cls(
+            prefix=prefix,
+            effect=effect,
+            enabled=enabled,
+            rgb=rgb,
+            brightness=brightness,
+            speed=speed,
+            slots=slots,
+        )
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "enabled": self.enabled,
+            "effect": self.effect,
+            "color": list(self.rgb),
+            "brightness": self.brightness,
+            "speed": self.speed,
+        }
+
+
 @dataclass(frozen=True)
 class ScreenState:
     """The 12-byte ``0xEE`` screen state.
@@ -187,6 +269,7 @@ class Screen:
         self.firmware = ""
         self._lyric_overlay_active = False
         self._active_layout: tuple[object, ...] | None = None
+        self._ambient_cache: AmbientState | None = None
         try:
             self._handshake()
         except Exception:
@@ -223,6 +306,72 @@ class Screen:
 
     def state(self) -> ScreenState:
         return ScreenState.from_bytes(self._request(protocol.CMD_SCREEN_GET))
+
+    def ambient_state(self) -> AmbientState:
+        """Query the surround ambient light strip (``0x6A``)."""
+        state = AmbientState.from_bytes(self._request(protocol.CMD_LIGHT_GET))
+        self._ambient_cache = state
+        return state
+
+    def _send_light(self, payload: bytes, repeats: int = 3, delay_s: float = 0.03) -> None:
+        import time as _time
+
+        for attempt in range(repeats):
+            self._send(protocol.CMD_LIGHT_SET, payload)
+            if attempt + 1 < repeats:
+                _time.sleep(delay_s)
+
+    def set_ambient(
+        self,
+        *,
+        enabled: bool | None = None,
+        effect: int | None = None,
+        rgb: tuple[int, int, int] | None = None,
+        brightness: int | None = None,
+        speed: int | None = None,
+    ) -> AmbientState:
+        """Control the surround RGB ambient light strip (``0x6B``).
+
+        Verified on A160 firmware 1.1.1: uses prefix ``0x20`` (read dynamically
+        from ``0x6A``), slot 7 for power on/off, and repeats ``0x6B`` 3 times
+        with 30 ms spacing so the MCU applies the change reliably.
+        """
+        current = self._ambient_cache or self.ambient_state()
+        prefix = current.prefix
+
+        if enabled is False:
+            self._send_light(bytes([prefix, _AMBIENT_POWER_SLOT, 0, 0, 0, 0xFF, 0xFF]))
+            return self.ambient_state()
+
+        if enabled is True and effect is None and rgb is None and brightness is None and speed is None:
+            self._send_light(bytes([prefix, _AMBIENT_POWER_SLOT, 0, 0, 1, 0xFF, 0xFF]))
+            return self.ambient_state()
+
+        target_effect = current.effect if effect is None else int(effect)
+        if target_effect not in AMBIENT_EFFECTS:
+            raise ValueError("ambient effect must be 1..6")
+
+        br = current.brightness if brightness is None else max(0, min(100, int(brightness)))
+        spd = current.speed if speed is None else max(1, min(10, int(speed)))
+
+        if target_effect in _AMBIENT_RGB_EFFECTS:
+            c = current.rgb if rgb is None else (
+                max(0, min(255, int(rgb[0]))),
+                max(0, min(255, int(rgb[1]))),
+                max(0, min(255, int(rgb[2]))),
+            )
+            p1, p2, p3 = c
+        else:
+            existing = current.slots.get(target_effect)
+            if existing is not None:
+                p1, p2, p3 = existing[1], existing[2], existing[3]
+            else:
+                p1 = 1 if target_effect == 2 else (2 if target_effect == 5 else 0)
+                p2, p3 = 0, 0
+
+        wire_speed = spd if target_effect in _AMBIENT_SPEED_EFFECTS else 0xFF
+        self._send_light(bytes([prefix, target_effect, p1, p2, p3, br, wire_speed]))
+        return self.ambient_state()
 
     def get_text(self, source: int = protocol.TEXT_SOURCE_CUSTOM) -> str:
         payload = self._request(protocol.CMD_TEXT_GET, bytes([source]))

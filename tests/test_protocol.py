@@ -168,3 +168,61 @@ def test_screen_set_color_sends_full_9_byte_action_3_and_restore_restores_rgb():
     screen.restore(snap)
     screen_sets = [pkt[6:6 + pkt[5]] for pkt in sent if pkt[3] == protocol.CMD_SCREEN_SET]
     assert any(p[:4] == bytes([3, 0xF0, 0xB4, 0xC8]) for p in screen_sets)
+
+
+def test_ambient_state_decode_and_set_ambient_a160():
+    from halobar.device.screen import AmbientState, Screen
+
+    # Real 0x6A capture from A160 firmware 1.1.1 (breathing #C3B9FF, br=100, speed=8).
+    raw_on = bytes.fromhex(
+        "20 01 01 c3 b9 ff 64 08 02 01 00 00 64 08 03 c3 b9 ff 64 ff "
+        "04 00 00 00 64 ff 05 02 00 00 64 ff 06 00 00 00 64 ff 07 00 00 01 ff ff"
+    )
+    raw_off = bytes.fromhex(
+        "20 07 01 c3 b9 ff 64 08 02 01 00 00 64 08 03 f0 4a 64 50 ff "
+        "04 00 00 00 64 ff 05 02 00 00 64 ff 06 00 00 00 64 ff 07 00 00 00 ff ff"
+    )
+    st = AmbientState.from_bytes(raw_on)
+    assert st.prefix == 0x20
+    assert st.enabled is True
+    assert st.effect == 1
+    assert st.rgb == (0xC3, 0xB9, 0xFF)
+    assert st.brightness == 100
+    assert st.speed == 8
+
+    st_off = AmbientState.from_bytes(raw_off)
+    assert st_off.enabled is False
+
+    sent: list[bytes] = []
+
+    class FakeTransport:
+        def __init__(self) -> None:
+            self.replies: list[bytes] = [
+                bytes([0x02, 0x00, 0x00, 0x40]),  # handshake
+                bytes([1, 1, 1]),                  # version
+                raw_on,                            # initial ambient_state
+                raw_on,                            # readback after static
+                raw_off,                           # readback after power off
+            ]
+
+        def write(self, packet: bytes) -> None:
+            sent.append(packet)
+
+        def read_until(self, command: int, timeout_ms: int = 3000) -> bytes:
+            return self.replies.pop(0)
+
+        def close(self) -> None:
+            pass
+
+    screen = Screen(FakeTransport())
+    sent.clear()
+    screen.set_ambient(effect=3, rgb=(240, 74, 100), brightness=80)
+    light_writes = [pkt[6:6 + pkt[5]] for pkt in sent if pkt[3] == protocol.CMD_LIGHT_SET]
+    assert len(light_writes) == 3
+    assert light_writes[0] == bytes([0x20, 3, 240, 74, 100, 80, 0xFF])
+
+    sent.clear()
+    off = screen.set_ambient(enabled=False)
+    assert off.enabled is False
+    light_writes = [pkt[6:6 + pkt[5]] for pkt in sent if pkt[3] == protocol.CMD_LIGHT_SET]
+    assert light_writes[0] == bytes([0x20, 7, 0, 0, 0, 0xFF, 0xFF])

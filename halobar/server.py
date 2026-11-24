@@ -130,6 +130,7 @@ class ConsoleServer:
             "animation": config.animation,
             "color": list(config.color) if config.color is not None else None,
             "color_calibration": config.color_calibration,
+            "ambient_sync_color": config.ambient_sync_color,
             "scroll_long_lines": config.scroll_long_lines,
             "line_mode": config.line_mode,
             "lyric_lang": config.lyric_lang,
@@ -204,7 +205,7 @@ class ConsoleServer:
         kwargs: dict[str, object] = {}
         for key in ("align", "scroll_long_lines", "line_mode", "lyric_lang",
                     "page_units", "standby_after", "standby_scene_option",
-                    "color_calibration"):
+                    "color_calibration", "ambient_sync_color"):
             if key in payload and payload[key] is not None:
                 kwargs[key] = payload[key]
         if "animation" in payload:
@@ -234,6 +235,7 @@ class ConsoleServer:
             self.settings.apply_lyric_lang(config.lyric_lang)
             self.settings.apply_color(config.color)
             self.settings.color_calibration = config.color_calibration
+            self.settings.ambient_sync_color = config.ambient_sync_color
             self.settings.scroll_long_lines = config.scroll_long_lines
             self.settings.line_mode = config.line_mode
             self.settings.standby_after = config.standby_after
@@ -248,6 +250,39 @@ class ConsoleServer:
                 self.settings.update_proxy = payload["update_proxy"]
                 self.service.config.update_proxy = payload["update_proxy"]
             self.settings.save()
+        return HTTPStatus.OK, {"ok": True, "status": self.status_payload()}
+
+    def handle_ambient(self, payload: dict) -> tuple[int, dict]:
+        kwargs: dict[str, object] = {}
+        if "enabled" in payload and payload["enabled"] is not None:
+            kwargs["enabled"] = bool(payload["enabled"])
+        if "effect" in payload and payload["effect"] is not None:
+            try:
+                kwargs["effect"] = int(payload["effect"])
+            except (TypeError, ValueError):
+                return HTTPStatus.BAD_REQUEST, {"error": "effect must be 1..6"}
+        if "rgb" in payload and payload["rgb"] is not None:
+            rgb = payload["rgb"]
+            if not isinstance(rgb, list) or len(rgb) != 3:
+                return HTTPStatus.BAD_REQUEST, {"error": "rgb must be [R, G, B]"}
+            try:
+                kwargs["rgb"] = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
+            except (TypeError, ValueError):
+                return HTTPStatus.BAD_REQUEST, {"error": "rgb must be 3 integers"}
+        if "brightness" in payload and payload["brightness"] is not None:
+            try:
+                kwargs["brightness"] = int(payload["brightness"])
+            except (TypeError, ValueError):
+                return HTTPStatus.BAD_REQUEST, {"error": "brightness must be 0..100"}
+        if "speed" in payload and payload["speed"] is not None:
+            try:
+                kwargs["speed"] = int(payload["speed"])
+            except (TypeError, ValueError):
+                return HTTPStatus.BAD_REQUEST, {"error": "speed must be 1..10"}
+        try:
+            self.service.request_ambient(**kwargs)  # type: ignore[arg-type]
+        except ValueError as exc:
+            return HTTPStatus.BAD_REQUEST, {"error": str(exc)}
         return HTTPStatus.OK, {"ok": True, "status": self.status_payload()}
 
     def handle_lyrics(self) -> tuple[int, dict]:
@@ -546,6 +581,8 @@ def _make_handler(server: ConsoleServer):
                 status, data = server.handle_command(payload)
             elif path == "/api/settings":
                 status, data = server.handle_settings(payload)
+            elif path == "/api/ambient":
+                status, data = server.handle_ambient(payload)
             elif path == "/api/lyrics/select":
                 status, data = server.handle_lyric_select(payload)
             elif path == "/api/asset/upload":
