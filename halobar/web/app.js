@@ -159,6 +159,52 @@ function showToast(message, isError = false) {
   toastTimer = setTimeout(() => { el.className = 'toast'; }, isError ? 3200 : 1800);
 }
 
+// --------------------------------------------------------------- modal dialog
+let activeModalResolve = null;
+
+function closeModal(result = false) {
+  const backdrop = $('modal-backdrop');
+  if (!backdrop || backdrop.hidden) return;
+  backdrop.hidden = true;
+  const resolve = activeModalResolve;
+  activeModalResolve = null;
+  if (resolve) resolve(result);
+}
+
+function showConfirm({ title, body, notes = '', confirmText = '确认', cancelText = '取消' }) {
+  return new Promise((resolve) => {
+    if (activeModalResolve) closeModal(false);
+    activeModalResolve = resolve;
+    $('modal-title').textContent = title || '确认操作';
+    $('modal-body').textContent = body || '';
+    const notesEl = $('modal-notes');
+    const trimmed = String(notes || '').trim();
+    if (trimmed) {
+      notesEl.textContent = trimmed;
+      notesEl.hidden = false;
+    } else {
+      notesEl.hidden = true;
+    }
+    $('modal-confirm').textContent = confirmText;
+    $('modal-cancel').textContent = cancelText;
+    $('modal-backdrop').hidden = false;
+    $('modal-confirm').focus();
+  });
+}
+
+$('modal-cancel').onclick = () => closeModal(false);
+$('modal-confirm').onclick = () => closeModal(true);
+$('modal-backdrop').addEventListener('click', (e) => {
+  if (e.target === $('modal-backdrop')) closeModal(false);
+});
+document.addEventListener('keydown', (e) => {
+  if ($('modal-backdrop').hidden) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeModal(false);
+  }
+});
+
 // ---------------------------------------------------------------------- theme
 const mediaDark = window.matchMedia('(prefers-color-scheme: dark)');
 let currentThemePref = 'system';
@@ -625,8 +671,9 @@ $('btn-reset-offset').onclick = async () => {
   showToast('偏移已归零');
 };
 
-// Keyboard shortcuts when not focused on an input
+// Keyboard shortcuts when not focused on an input or modal
 document.addEventListener('keydown', (e) => {
+  if (!$('modal-backdrop').hidden) return;
   const tag = (document.activeElement && document.activeElement.tagName) || '';
   if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
   if (e.code === 'Space' && !e.ctrlKey && !e.altKey) {
@@ -825,11 +872,14 @@ $('btn-shortcut').onclick = async () => {
   else showToast('已创建桌面快捷方式');
 };
 
+let latestUpdateMeta = { version: '', notes: '' };
+
 function renderUpdate(s) {
   const state = s.update_state || 'idle';
   const version = s.update_version || '';
   const progress = Math.round((s.update_progress || 0) * 100);
   const current = 'v' + (s.version || '-');
+  latestUpdateMeta = { version, notes: s.update_notes || '' };
   const line = $('update-line');
   const button = $('btn-update');
   const bar = $('update-progress');
@@ -873,7 +923,15 @@ $('btn-check-update').onclick = async () => {
 };
 
 $('btn-update').onclick = async () => {
-  if (!confirm('将下载新版本、自动替换程序文件并重启。继续吗？')) return;
+  const verLabel = latestUpdateMeta.version ? ` v${latestUpdateMeta.version}` : '';
+  const ok = await showConfirm({
+    title: `更新到${verLabel || '新版本'}`,
+    body: '将自动下载安装包、替换程序文件并重启 halobar，本地设置与歌词记忆会完整保留。',
+    notes: latestUpdateMeta.notes,
+    confirmText: '开始更新',
+    cancelText: '稍后再说',
+  });
+  if (!ok) return;
   await api('/api/update/apply', { method: 'POST', body: '{}' });
   showToast('开始下载更新…');
   setTimeout(refresh, 800);
