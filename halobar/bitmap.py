@@ -31,13 +31,22 @@ class AssetError(ValueError):
 
 @dataclass
 class Asset:
-    frames: list[object] = field(default_factory=list)   # PIL images in mode "1"
+    frames: list[object] = field(default_factory=list)   # PIL images in mode "1" or "RGBA"
     delays: list[int] = field(default_factory=list)
     name: str = ""
+    source_frames: int = 0
+
+    def __post_init__(self) -> None:
+        if self.source_frames <= 0:
+            self.source_frames = len(self.frames)
 
     @property
     def animated(self) -> bool:
         return len(self.frames) > 1
+
+    @property
+    def sampled(self) -> bool:
+        return self.source_frames > len(self.frames)
 
     @property
     def category(self) -> int:
@@ -58,8 +67,23 @@ def _pil():
     return Image, ImageOps
 
 
-def load(data: bytes, name: str = "") -> "Asset":
-    """Decode PNG/JPG/BMP/WebP/GIF into raw RGBA frames (animated GIF supported)."""
+def _sample_indices(total: int, limit: int) -> list[int]:
+    """Evenly pick ``limit`` frame indices from ``0..total-1`` preserving start & end."""
+    if total <= limit:
+        return list(range(total))
+    if limit <= 1:
+        return [0]
+    return [round(i * (total - 1) / (limit - 1)) for i in range(limit)]
+
+
+def load(data: bytes, name: str = "", *, max_frames: int = MAX_FRAMES,
+         auto_sample: bool = True) -> "Asset":
+    """Decode PNG/JPG/BMP/WebP/GIF into raw RGBA frames (animated GIF supported).
+
+    When ``auto_sample`` is true (default), animations longer than ``max_frames``
+    are evenly subsampled down to ``max_frames`` while scaling per-frame delays
+    so overall playback tempo stays natural.
+    """
     if len(data) > MAX_BYTES:
         raise AssetError("文件不能超过 32 MB")
     Image, ImageOps = _pil()
@@ -72,18 +96,30 @@ def load(data: bytes, name: str = "") -> "Asset":
     delays = []
     total_pixels = 0
     try:
-        count = getattr(source, "n_frames", 1)
-        if count > MAX_FRAMES:
-            raise AssetError(f"最多支持 {MAX_FRAMES} 帧（当前 {count} 帧）")
+        count = max(1, int(getattr(source, "n_frames", 1)))
+        if count > max_frames and not auto_sample:
+            raise AssetError(f"最多支持 {max_frames} 帧（当前 {count} 帧）")
+        picked = _sample_indices(count, max_frames)
+        picked_set = set(picked)
+        # Walk sequentially so GIF disposal / delta frames composite accurately.
+        all_delays: list[int] = []
+        sampled_frames: dict[int, object] = {}
         for index in range(count):
             source.seek(index)
-            frame = ImageOps.exif_transpose(source).convert("RGBA")
-            total_pixels += frame.width * frame.height
-            if total_pixels > MAX_PIXELS:
-                raise AssetError("所有帧合计像素超过 4000 万")
-            frames.append(frame)
             delay = int(source.info.get("duration", MIN_DELAY_MS) or MIN_DELAY_MS)
-            delays.append(max(MIN_DELAY_MS, min(MAX_DELAY_MS, delay)))
+            all_delays.append(max(20, delay))
+            if index in picked_set:
+                frame = ImageOps.exif_transpose(source).convert("RGBA")
+                total_pixels += frame.width * frame.height
+                if total_pixels > MAX_PIXELS:
+                    raise AssetError("所有帧合计像素超过 4000 万")
+                sampled_frames[index] = frame
+
+        for pos, frame_idx in enumerate(picked):
+            frames.append(sampled_frames[frame_idx])
+            next_idx = picked[pos + 1] if pos + 1 < len(picked) else count
+            span_ms = sum(all_delays[frame_idx:max(frame_idx + 1, next_idx)])
+            delays.append(max(MIN_DELAY_MS, min(MAX_DELAY_MS, span_ms)))
     except AssetError:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -93,7 +129,7 @@ def load(data: bytes, name: str = "") -> "Asset":
 
     if not frames:
         raise AssetError("图片没有可用帧")
-    return Asset(frames=frames, delays=delays, name=name)
+    return Asset(frames=frames, delays=delays, name=name, source_frames=count)
 
 
 def prepare(frame, *, fit: str = "contain", threshold: int = 128,
@@ -233,6 +269,38 @@ def preview_png(image, scale: int = 3) -> bytes:
     return buffer.getvalue()
 
 
-def apply_options(asset: "Asset", **options) -> "Asset":
-    frames = [prepare(frame, **options) for frame in asset.frames]
-    return Asset(frames=frames, delays=list(asset.delays), name=asset.name)
+def apply_options(
+    asset: "Asset",
+    *,
+    selected_indices: list[int] | None = None,
+    delays_override: list[int] | None = None,
+    speed: float = 1.0,
+    **options,
+) -> "Asset":
+    """Prepare frames with image adjustments plus optional frame selection/timing."""
+    indices = list(range(len(asset.frames)))
+    if selected_indices is not None:
+        cleaned = [i for i in selected_indices if isinstance(i, int) and 0 <= i < len(asset.frames)]
+        if not cleaned:
+            raise AssetError("至少需要保留 1 帧")
+        if len(cleaned) > MAX_FRAMES:
+            cleaned = cleaned[:MAX_FRAMES]
+        indices = cleaned
+
+    frames = [prepare(asset.frames[i], **options) for i in indices]
+    if delays_override is not None and len(delays_override) == len(indices):
+        raw_delays = [int(d) for d in delays_override]
+    else:
+        raw_delays = [asset.delays[i] for i in indices]
+
+    safe_speed = max(0.25, min(4.0, float(speed or 1.0)))
+    delays = [
+        max(MIN_DELAY_MS, min(MAX_DELAY_MS, int(round(d / safe_speed))))
+        for d in raw_delays
+    ]
+    return Asset(
+        frames=frames,
+        delays=delays,
+        name=asset.name,
+        source_frames=asset.source_frames,
+    )

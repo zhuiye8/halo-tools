@@ -71,12 +71,15 @@ class _ConsoleHTTPServer(ThreadingHTTPServer):
 
 class ConsoleServer:
     def __init__(self, service: LyricsService, port: int = 8765, token: str | None = None,
-                 settings=None, environment=None) -> None:
+                 settings=None, environment=None, library=None) -> None:
+        from .library import AssetLibrary
+
         self.service = service
         self.port = port
         self.token = token or secrets.token_urlsafe(16)
         self.settings = settings
         self.environment = environment
+        self.library = library if library is not None else AssetLibrary()
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self.logs = RingBufferHandler()
@@ -352,82 +355,178 @@ class ConsoleServer:
         }
 
     # ------------------------------------------------------------------- assets
-    def handle_asset_upload(self, payload: dict) -> tuple[int, dict]:
+    @staticmethod
+    def _decode_upload_image(payload: dict) -> tuple[bytes | None, str | None]:
         import base64
         import binascii
 
-        from . import bitmap
-        from .service import UploadJob
-
         encoded = payload.get("data") or ""
         if not isinstance(encoded, str) or not encoded:
-            return HTTPStatus.BAD_REQUEST, {"error": "missing file data"}
+            return None, "missing file data"
         if len(encoded) > 48 * 1024 * 1024:
-            return HTTPStatus.BAD_REQUEST, {"error": "file too large"}
+            return None, "file too large"
         try:
-            raw = base64.b64decode(encoded, validate=True)
+            return base64.b64decode(encoded, validate=True), None
         except (binascii.Error, ValueError):
-            return HTTPStatus.BAD_REQUEST, {"error": "invalid base64 data"}
+            return None, "invalid base64 data"
 
-        name = str(payload.get("filename") or "asset")
-        options = {
-            "fit": str(payload.get("fit") or "contain"),
-            "threshold": int(payload.get("threshold") or 128),
-            "invert": bool(payload.get("invert")),
-            "dither": bool(payload.get("dither")),
-            "zoom": float(payload.get("zoom") or 1.0),
-            "offset_x": float(payload.get("offset_x") or 0.0),
-            "offset_y": float(payload.get("offset_y") or 0.0),
-            "brightness": int(payload.get("brightness") or 0),
-            "contrast": float(payload.get("contrast") or 1.0),
-        }
-        if options["fit"] not in ("contain", "cover", "stretch"):
-            return HTTPStatus.BAD_REQUEST, {"error": "fit must be contain/cover/stretch"}
-        options["threshold"] = max(0, min(255, options["threshold"]))
-        options["zoom"] = max(0.2, min(4.0, options["zoom"]))
-        options["offset_x"] = max(-1.0, min(1.0, options["offset_x"]))
-        options["offset_y"] = max(-1.0, min(1.0, options["offset_y"]))
-        options["brightness"] = max(-100, min(100, options["brightness"]))
-        options["contrast"] = max(0.2, min(3.0, options["contrast"]))
+    @staticmethod
+    def _parse_asset_options(payload: dict) -> tuple[dict | None, str | None]:
+        fit = str(payload.get("fit") or "contain")
+        if fit not in ("contain", "cover", "stretch"):
+            return None, "fit must be contain/cover/stretch"
         try:
-            asset = bitmap.load(raw, name)
-            processed = bitmap.apply_options(asset, **options)
-            stream = bitmap.encode(processed)
-        except (bitmap.AssetError, RuntimeError) as exc:
-            return HTTPStatus.BAD_REQUEST, {"error": str(exc)}
+            options: dict[str, object] = {
+                "fit": fit,
+                "threshold": max(0, min(255, int(payload.get("threshold") if payload.get("threshold") is not None else 128))),
+                "invert": bool(payload.get("invert")),
+                "dither": bool(payload.get("dither")),
+                "zoom": max(0.2, min(4.0, float(payload.get("zoom") if payload.get("zoom") is not None else 1.0))),
+                "offset_x": max(-1.0, min(1.0, float(payload.get("offset_x") or 0.0))),
+                "offset_y": max(-1.0, min(1.0, float(payload.get("offset_y") or 0.0))),
+                "brightness": max(-100, min(100, int(payload.get("brightness") or 0))),
+                "contrast": max(0.2, min(3.0, float(payload.get("contrast") if payload.get("contrast") is not None else 1.0))),
+            }
+        except (TypeError, ValueError):
+            return None, "invalid image processing options"
+        return options, None
+
+    @staticmethod
+    def _encode_frame_previews(asset) -> list[dict]:
+        import base64
+
+        from . import bitmap
+
+        out = []
+        for idx, (frame, delay) in enumerate(zip(asset.frames, asset.delays)):
+            png = bitmap.preview_png(frame, scale=2)
+            out.append({
+                "index": idx,
+                "delay": int(delay),
+                "preview": "data:image/png;base64," + base64.b64encode(png).decode("ascii"),
+            })
+        return out
+
+    def _submit_encoded_asset(self, *, stream: bytes, category: int, option: int,
+                              name: str, frames: int, as_standby: bool,
+                              pause_after: bool) -> None:
+        import time as _time
+
+        from .service import UploadJob
 
         job = UploadJob(
             data=stream,
-            category=processed.category,
-            option=processed.option,
+            category=category,
+            option=option,
             name=name,
-            frames=len(processed.frames),
-            as_standby=bool(payload.get("as_standby", True)),
-            pause_after=bool(payload.get("pause_after", False)),
+            frames=frames,
+            as_standby=as_standby,
+            pause_after=pause_after,
         )
         self.service.submit_upload(job)
         if self.settings is not None:
-            import time as _time
-
             self.settings.last_asset = {
                 "name": name,
-                "frames": len(processed.frames),
-                "category": processed.category,
-                "option": processed.option,
+                "frames": frames,
+                "category": category,
+                "option": option,
                 "time": _time.time(),
             }
             if job.as_standby:
-                self.settings.standby_scene = processed.category
-                self.settings.standby_scene_option = processed.option
+                self.settings.standby_scene = category
+                self.settings.standby_scene_option = option
             self.settings.save()
+
+    def handle_asset_inspect(self, payload: dict) -> tuple[int, dict]:
+        from . import bitmap
+
+        raw, err = self._decode_upload_image(payload)
+        if err or raw is None:
+            return HTTPStatus.BAD_REQUEST, {"error": err or "missing file data"}
+        options, opt_err = self._parse_asset_options(payload)
+        if opt_err or options is None:
+            return HTTPStatus.BAD_REQUEST, {"error": opt_err or "invalid options"}
+        name = str(payload.get("filename") or "asset")
+        try:
+            asset = bitmap.load(raw, name, auto_sample=True)
+            processed = bitmap.apply_options(asset, **options)
+        except (bitmap.AssetError, RuntimeError) as exc:
+            return HTTPStatus.BAD_REQUEST, {"error": str(exc)}
+        return HTTPStatus.OK, {
+            "ok": True,
+            "name": name,
+            "source_frames": asset.source_frames,
+            "sampled": asset.sampled,
+            "animated": processed.animated,
+            "frames": self._encode_frame_previews(processed),
+        }
+
+    def handle_asset_upload(self, payload: dict) -> tuple[int, dict]:
+        import base64
+
+        from . import bitmap
+
+        raw, err = self._decode_upload_image(payload)
+        if err or raw is None:
+            return HTTPStatus.BAD_REQUEST, {"error": err or "missing file data"}
+        options, opt_err = self._parse_asset_options(payload)
+        if opt_err or options is None:
+            return HTTPStatus.BAD_REQUEST, {"error": opt_err or "invalid options"}
+
+        name = str(payload.get("filename") or "asset")
+        selected = payload.get("selected_indices")
+        if selected is not None and not isinstance(selected, list):
+            return HTTPStatus.BAD_REQUEST, {"error": "selected_indices must be a list"}
+        delays_override = payload.get("delays")
+        if delays_override is not None and not isinstance(delays_override, list):
+            return HTTPStatus.BAD_REQUEST, {"error": "delays must be a list"}
+        try:
+            speed = float(payload.get("speed") if payload.get("speed") is not None else 1.0)
+        except (TypeError, ValueError):
+            speed = 1.0
+
+        try:
+            asset = bitmap.load(raw, name, auto_sample=True)
+            processed = bitmap.apply_options(
+                asset,
+                selected_indices=[int(i) for i in selected] if selected is not None else None,
+                delays_override=[int(d) for d in delays_override] if delays_override is not None else None,
+                speed=speed,
+                **options,
+            )
+            stream = bitmap.encode(processed)
+        except (bitmap.AssetError, RuntimeError, TypeError, ValueError) as exc:
+            return HTTPStatus.BAD_REQUEST, {"error": str(exc)}
+
+        upload_to_device = bool(payload.get("upload_to_device", True))
+        save_to_library = bool(payload.get("save_to_library", True))
+        if upload_to_device:
+            self._submit_encoded_asset(
+                stream=stream,
+                category=processed.category,
+                option=processed.option,
+                name=name,
+                frames=len(processed.frames),
+                as_standby=bool(payload.get("as_standby", True)),
+                pause_after=bool(payload.get("pause_after", False)),
+            )
+        saved_item = None
+        if save_to_library and self.library is not None:
+            saved_item = self.library.save_asset(processed, stream, name=name, kind="image")
+
         preview = bitmap.preview_png(processed.frames[0])
         return HTTPStatus.OK, {
             "ok": True,
             "frames": len(processed.frames),
+            "source_frames": processed.source_frames,
+            "sampled": processed.sampled,
+            "delays": list(processed.delays),
             "animated": processed.animated,
             "bytes": len(stream),
             "category": processed.category,
             "option": processed.option,
+            "uploaded": upload_to_device,
+            "library_item": saved_item,
             "preview": "data:image/png;base64," + base64.b64encode(preview).decode(),
         }
 
@@ -441,6 +540,178 @@ class ConsoleServer:
                 return HTTPStatus.BAD_REQUEST, {"error": "还没有上传过素材"}
             category, option = status.asset_category, status.asset_option
         self.service.request_scene(category, option)
+        return HTTPStatus.OK, {"ok": True}
+
+    # --------------------------------------------------------------- billboard
+    @staticmethod
+    def _render_billboard(payload: dict):
+        from . import billboard
+
+        return billboard.render(
+            str(payload.get("text") or ""),
+            subtext=str(payload.get("subtext") or ""),
+            font_style=str(payload.get("font_style") or "bold"),
+            font_size=int(payload.get("font_size") if payload.get("font_size") is not None else 22),
+            bold_stroke=int(payload.get("bold_stroke") or 0),
+            tracking=int(payload.get("tracking") or 0),
+            align=str(payload.get("align") or "center"),
+            border=str(payload.get("border") or "none"),
+            invert=bool(payload.get("invert")),
+            motion=str(payload.get("motion") or "static"),
+            delay_ms=int(payload.get("delay_ms") if payload.get("delay_ms") is not None else 320),
+        )
+
+    def handle_billboard_render(self, payload: dict) -> tuple[int, dict]:
+        from . import bitmap
+
+        try:
+            asset = self._render_billboard(payload)
+        except (bitmap.AssetError, RuntimeError, TypeError, ValueError) as exc:
+            return HTTPStatus.BAD_REQUEST, {"error": str(exc)}
+        return HTTPStatus.OK, {
+            "ok": True,
+            "name": asset.name,
+            "animated": asset.animated,
+            "category": asset.category,
+            "option": asset.option,
+            "frames": self._encode_frame_previews(asset),
+        }
+
+    def handle_billboard_upload(self, payload: dict) -> tuple[int, dict]:
+        from . import bitmap
+
+        try:
+            asset = self._render_billboard(payload)
+            stream = bitmap.encode(asset)
+        except (bitmap.AssetError, RuntimeError, TypeError, ValueError) as exc:
+            return HTTPStatus.BAD_REQUEST, {"error": str(exc)}
+
+        name = str(payload.get("name") or asset.name).strip() or asset.name
+        upload_to_device = bool(payload.get("upload_to_device", True))
+        save_to_library = bool(payload.get("save_to_library", True))
+        if upload_to_device:
+            self._submit_encoded_asset(
+                stream=stream,
+                category=asset.category,
+                option=asset.option,
+                name=name,
+                frames=len(asset.frames),
+                as_standby=bool(payload.get("as_standby", True)),
+                pause_after=bool(payload.get("pause_after", False)),
+            )
+        saved_item = None
+        if save_to_library and self.library is not None:
+            saved_item = self.library.save_asset(asset, stream, name=name, kind="billboard")
+        return HTTPStatus.OK, {
+            "ok": True,
+            "name": name,
+            "frames": len(asset.frames),
+            "animated": asset.animated,
+            "bytes": len(stream),
+            "category": asset.category,
+            "option": asset.option,
+            "uploaded": upload_to_device,
+            "library_item": saved_item,
+        }
+
+    # ----------------------------------------------------------------- library
+    def handle_library_list(self) -> tuple[int, dict]:
+        from .library import builtin_presets
+
+        items = self.library.list_items() if self.library is not None else []
+        return HTTPStatus.OK, {"items": items, "presets": builtin_presets()}
+
+    def handle_library_push(self, payload: dict) -> tuple[int, dict]:
+        item_id = str(payload.get("id") or "").strip()
+        if not item_id or self.library is None:
+            return HTTPStatus.BAD_REQUEST, {"error": "missing asset id"}
+        try:
+            item, stream = self.library.load_payload(item_id)
+        except KeyError as exc:
+            return HTTPStatus.NOT_FOUND, {"error": str(exc)}
+        self._submit_encoded_asset(
+            stream=stream,
+            category=item.category,
+            option=item.option,
+            name=item.name,
+            frames=item.frames,
+            as_standby=bool(payload.get("as_standby", True)),
+            pause_after=bool(payload.get("pause_after", False)),
+        )
+        return HTTPStatus.OK, {
+            "ok": True,
+            "name": item.name,
+            "frames": item.frames,
+            "category": item.category,
+            "option": item.option,
+        }
+
+    def handle_library_preset(self, payload: dict) -> tuple[int, dict]:
+        from . import bitmap
+        from .library import build_preset
+
+        preset_id = str(payload.get("preset_id") or "").strip()
+        if not preset_id:
+            return HTTPStatus.BAD_REQUEST, {"error": "missing preset_id"}
+        try:
+            asset = build_preset(preset_id)
+            stream = bitmap.encode(asset)
+        except (KeyError, bitmap.AssetError, RuntimeError) as exc:
+            return HTTPStatus.BAD_REQUEST, {"error": str(exc)}
+
+        if bool(payload.get("preview_only", False)):
+            return HTTPStatus.OK, {
+                "ok": True,
+                "name": asset.name,
+                "animated": asset.animated,
+                "frames": self._encode_frame_previews(asset),
+            }
+
+        upload_to_device = bool(payload.get("upload_to_device", True))
+        save_to_library = bool(payload.get("save_to_library", True))
+        if upload_to_device:
+            self._submit_encoded_asset(
+                stream=stream,
+                category=asset.category,
+                option=asset.option,
+                name=asset.name,
+                frames=len(asset.frames),
+                as_standby=bool(payload.get("as_standby", True)),
+                pause_after=bool(payload.get("pause_after", False)),
+            )
+        saved_item = None
+        if save_to_library and self.library is not None:
+            saved_item = self.library.save_asset(asset, stream, name=asset.name, kind="preset")
+        return HTTPStatus.OK, {
+            "ok": True,
+            "name": asset.name,
+            "frames": len(asset.frames),
+            "animated": asset.animated,
+            "category": asset.category,
+            "option": asset.option,
+            "library_item": saved_item,
+        }
+
+    def handle_library_rename(self, payload: dict) -> tuple[int, dict]:
+        item_id = str(payload.get("id") or "").strip()
+        new_name = str(payload.get("name") or "")
+        if not item_id or self.library is None:
+            return HTTPStatus.BAD_REQUEST, {"error": "missing asset id"}
+        try:
+            item = self.library.rename(item_id, new_name)
+        except KeyError as exc:
+            return HTTPStatus.NOT_FOUND, {"error": str(exc)}
+        except ValueError as exc:
+            return HTTPStatus.BAD_REQUEST, {"error": str(exc)}
+        return HTTPStatus.OK, {"ok": True, "item": item}
+
+    def handle_library_delete(self, payload: dict) -> tuple[int, dict]:
+        item_id = str(payload.get("id") or "").strip()
+        if not item_id or self.library is None:
+            return HTTPStatus.BAD_REQUEST, {"error": "missing asset id"}
+        removed = self.library.delete(item_id)
+        if not removed:
+            return HTTPStatus.NOT_FOUND, {"error": "素材不存在"}
         return HTTPStatus.OK, {"ok": True}
 
 
@@ -560,6 +831,9 @@ def _make_handler(server: ConsoleServer):
                 self._json(status, data)
             elif path == "/api/logs":
                 self._json(HTTPStatus.OK, {"lines": server.logs.snapshot()})
+            elif path == "/api/library":
+                status, data = server.handle_library_list()
+                self._json(status, data)
             elif path == "/api/debug/threads":
                 self._json(HTTPStatus.OK, server.thread_snapshot())
             else:
@@ -571,7 +845,7 @@ def _make_handler(server: ConsoleServer):
                 self._json(HTTPStatus.UNAUTHORIZED, {"error": "token required"})
                 return
             path = urlparse(self.path).path
-            max_bytes = _UPLOAD_MAX_BODY if path == "/api/asset/upload" else _DEFAULT_MAX_BODY
+            max_bytes = _UPLOAD_MAX_BODY if path in ("/api/asset/upload", "/api/asset/inspect") else _DEFAULT_MAX_BODY
             try:
                 payload = self._body(max_bytes=max_bytes)
             except _PayloadTooLarge as exc:
@@ -585,10 +859,24 @@ def _make_handler(server: ConsoleServer):
                 status, data = server.handle_ambient(payload)
             elif path == "/api/lyrics/select":
                 status, data = server.handle_lyric_select(payload)
+            elif path == "/api/asset/inspect":
+                status, data = server.handle_asset_inspect(payload)
             elif path == "/api/asset/upload":
                 status, data = server.handle_asset_upload(payload)
             elif path == "/api/asset/display":
                 status, data = server.handle_asset_display(payload)
+            elif path == "/api/billboard/render":
+                status, data = server.handle_billboard_render(payload)
+            elif path == "/api/billboard/upload":
+                status, data = server.handle_billboard_upload(payload)
+            elif path == "/api/library/push":
+                status, data = server.handle_library_push(payload)
+            elif path == "/api/library/preset":
+                status, data = server.handle_library_preset(payload)
+            elif path == "/api/library/rename":
+                status, data = server.handle_library_rename(payload)
+            elif path == "/api/library/delete":
+                status, data = server.handle_library_delete(payload)
             elif path == "/api/shortcut":
                 status, data = server.handle_shortcut()
             elif path == "/api/update/check":

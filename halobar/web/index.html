@@ -150,16 +150,16 @@
 
         <div class="ctrl-row">
           <span class="ctrl-label">像素屏颜色</span>
-          <div class="swatches" id="color-swatches">
-            <button type="button" class="swatch" data-rgb="255,255,255" style="background:#ffffff" title="纯白"></button>
-            <button type="button" class="swatch" data-rgb="240,180,200" style="background:#f0b4c8" title="樱花粉 #F0B4C8"></button>
-            <button type="button" class="swatch" data-rgb="130,105,255" style="background:#8269ff" title="电光紫"></button>
-            <button type="button" class="swatch" data-rgb="56,189,248" style="background:#38bdf8" title="冰蓝"></button>
-            <button type="button" class="swatch" data-rgb="52,211,153" style="background:#34d399" title="薄荷绿"></button>
-            <button type="button" class="swatch" data-rgb="251,191,36" style="background:#fbbf24" title="暖琥珀"></button>
-            <button type="button" class="swatch" data-rgb="251,113,133" style="background:#fb7185" title="珊瑚粉"></button>
+          <div class="swatches" id="color-swatches" role="group" aria-label="像素屏颜色预设">
+            <button type="button" class="swatch" data-rgb="255,255,255" style="background:#ffffff" title="纯白" aria-label="纯白" aria-pressed="false"></button>
+            <button type="button" class="swatch" data-rgb="240,180,200" style="background:#f0b4c8" title="樱花粉 #F0B4C8" aria-label="樱花粉" aria-pressed="false"></button>
+            <button type="button" class="swatch" data-rgb="130,105,255" style="background:#8269ff" title="电光紫" aria-label="电光紫" aria-pressed="false"></button>
+            <button type="button" class="swatch" data-rgb="56,189,248" style="background:#38bdf8" title="冰蓝" aria-label="冰蓝" aria-pressed="false"></button>
+            <button type="button" class="swatch" data-rgb="52,211,153" style="background:#34d399" title="薄荷绿" aria-label="薄荷绿" aria-pressed="false"></button>
+            <button type="button" class="swatch" data-rgb="251,191,36" style="background:#fbbf24" title="暖琥珀" aria-label="暖琥珀" aria-pressed="false"></button>
+            <button type="button" class="swatch" data-rgb="251,113,133" style="background:#fb7185" title="珊瑚粉" aria-label="珊瑚粉" aria-pressed="false"></button>
             <label class="color-picker-wrap" title="自定义 RGB">
-              <input type="color" id="color-picker" value="#ffffff">
+              <input type="color" id="color-picker" value="#ffffff" aria-label="自定义像素屏 RGB 颜色">
             </label>
           </div>
         </div>
@@ -227,15 +227,15 @@
 
           <div class="ctrl-row" id="ambient-color-row">
             <span class="ctrl-label">灯带颜色</span>
-            <div class="swatches" id="ambient-swatches">
-              <button type="button" class="swatch" data-rgb="195,185,255" style="background:#c3b9ff" title="默认淡紫 #C3B9FF"></button>
-              <button type="button" class="swatch" data-rgb="240,180,200" style="background:#f0b4c8" title="樱花粉 #F0B4C8"></button>
-              <button type="button" class="swatch" data-rgb="255,255,255" style="background:#ffffff" title="纯白"></button>
-              <button type="button" class="swatch" data-rgb="56,189,248" style="background:#38bdf8" title="冰蓝"></button>
-              <button type="button" class="swatch" data-rgb="251,191,36" style="background:#fbbf24" title="暖琥珀"></button>
-              <button type="button" class="swatch" data-rgb="251,113,133" style="background:#fb7185" title="珊瑚粉"></button>
+            <div class="swatches" id="ambient-swatches" role="group" aria-label="灯带颜色预设">
+              <button type="button" class="swatch" data-rgb="195,185,255" style="background:#c3b9ff" title="默认淡紫 #C3B9FF" aria-label="默认淡紫" aria-pressed="false"></button>
+              <button type="button" class="swatch" data-rgb="240,180,200" style="background:#f0b4c8" title="樱花粉 #F0B4C8" aria-label="樱花粉" aria-pressed="false"></button>
+              <button type="button" class="swatch" data-rgb="255,255,255" style="background:#ffffff" title="纯白" aria-label="纯白" aria-pressed="false"></button>
+              <button type="button" class="swatch" data-rgb="56,189,248" style="background:#38bdf8" title="冰蓝" aria-label="冰蓝" aria-pressed="false"></button>
+              <button type="button" class="swatch" data-rgb="251,191,36" style="background:#fbbf24" title="暖琥珀" aria-label="暖琥珀" aria-pressed="false"></button>
+              <button type="button" class="swatch" data-rgb="251,113,133" style="background:#fb7185" title="珊瑚粉" aria-label="珊瑚粉" aria-pressed="false"></button>
               <label class="color-picker-wrap" title="自定义灯带 RGB">
-                <input type="color" id="ambient-color-picker" value="#c3b9ff">
+                <input type="color" id="ambient-color-picker" value="#c3b9ff" aria-label="自定义灯带 RGB 颜色">
               </label>
             </div>
           </div>
@@ -259,27 +259,53 @@
       </div>
     </section>
 
-    <!-- Custom Pixel Screen Studio -->
-    <section class="card span-12">
+    <!-- Custom Pixel Screen Studio 2.0 -->
+    <section class="card span-12" id="studio-card">
       <div class="card-head">
-        <p class="label">自定义像素屏工作台</p>
-        <span class="hint" style="margin:0">拖拽图片到预览区，或按 <span class="mono">Ctrl+V</span> 直接粘贴</span>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <p class="label">自定义像素屏工作台</p>
+          <div class="seg" role="tablist" aria-label="工作台模式" id="studio-tabs">
+            <button type="button" role="tab" data-tab="image" aria-selected="true" aria-pressed="true">图片 / GIF</button>
+            <button type="button" role="tab" data-tab="billboard" aria-selected="false" aria-pressed="false">文字招牌</button>
+            <button type="button" role="tab" data-tab="library" aria-selected="false" aria-pressed="false">素材库 <span id="library-count" class="tab-badge mono">0</span></button>
+          </div>
+        </div>
+        <span class="hint" id="studio-tip" style="margin:0">支持拖拽、粘贴图片或长 GIF（自动均匀抽选 8 帧）</span>
       </div>
-      <div class="asset-editor">
+
+      <!-- Tab 1: Image / Multi-frame GIF Studio -->
+      <div id="studio-pane-image" class="asset-editor">
         <div class="asset-preview-panel">
           <div class="screen-frame" id="asset-dropzone">
             <canvas id="asset-canvas" width="1024" height="128"></canvas>
-            <div class="screen-empty" id="asset-empty">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <div class="screen-empty" id="asset-empty" role="button" tabindex="0" aria-label="点击选择、拖拽或粘贴图片或 GIF">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               <span>点击选择、拖拽或粘贴图片 / GIF</span>
             </div>
           </div>
+
+          <div id="gif-bar" class="gif-bar" hidden>
+            <div class="gif-bar-top">
+              <div style="display:flex;align-items:center;gap:8px">
+                <button type="button" id="btn-gif-play" class="sm">暂停</button>
+                <span id="gif-frame-badge" class="mono gif-badge">帧 1 / 1</span>
+                <span id="gif-sample-note" class="hint" style="margin:0"></span>
+              </div>
+              <div class="slider-inline" style="width:160px">
+                <span style="width:auto;color:var(--ink-3)">速度</span>
+                <input type="range" id="gif-speed" min="0.5" max="2.5" step="0.1" value="1.0" aria-label="动画播放倍速">
+                <span id="gif-speed-val" class="mono">1.0×</span>
+              </div>
+            </div>
+            <div id="gif-strip" class="gif-strip" role="list" aria-label="动画帧序列（点击预览，取消勾选可剔除该帧）"></div>
+          </div>
+
           <div class="asset-bar-wrap"><i id="asset-bar"></i></div>
           <div class="asset-meta mono">
             <span id="asset-info">尚未选择图片</span>
             <span id="asset-progress"></span>
           </div>
-          <p class="hint">拖动预览可平移，滚轮缩放。256×32 单色、最多 8 帧、每帧 ≥100ms。</p>
+          <p class="hint">拖动预览可平移，滚轮缩放。256×32 单色、最多 8 帧、超长 GIF 自动抽帧，每帧 ≥100ms。</p>
         </div>
 
         <div class="asset-controls">
@@ -347,18 +373,129 @@
             <label class="chip-toggle"><input type="checkbox" id="asset-dither"><span>抖动</span></label>
             <label class="chip-toggle"><input type="checkbox" id="asset-standby" checked><span>设为待机画面</span></label>
             <label class="chip-toggle"><input type="checkbox" id="asset-pause"><span>上传后暂停歌词</span></label>
+            <label class="chip-toggle"><input type="checkbox" id="asset-save-lib" checked><span>存入素材库</span></label>
           </div>
 
           <div class="actions">
             <button type="button" id="btn-upload" class="primary">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               上传到音箱
             </button>
+            <button type="button" id="btn-save-lib">仅存库</button>
             <button type="button" id="btn-showasset">立即显示</button>
             <button type="button" id="btn-reset-view" class="subtle">重置视图</button>
-            <button type="button" id="btn-sample" class="ghost">载入示例图</button>
+            <button type="button" id="btn-sample" class="ghost">示例图</button>
           </div>
         </div>
+      </div>
+
+      <!-- Tab 2: Custom Bold/Art Text Billboard Studio -->
+      <div id="studio-pane-billboard" class="asset-editor" hidden>
+        <div class="asset-preview-panel">
+          <div class="screen-frame">
+            <canvas id="bb-canvas" width="1024" height="128"></canvas>
+          </div>
+          <div class="asset-meta mono">
+            <span id="bb-info">实时文字招牌预览 · 256×32</span>
+            <span id="bb-mode-tag">静态 1 帧</span>
+          </div>
+          <p class="hint">可渲染任意 Windows 粗体/艺术字、加粗描边、双行排版与 4 帧动态边框，上传一次即常驻音箱自定义场景（不损耗闪存）。</p>
+        </div>
+
+        <div class="asset-controls">
+          <div class="text-field-row">
+            <input type="text" id="bb-text" class="text-input" maxlength="40" value="FOCUS MODE" placeholder="主标题（如：专注中 / DO NOT DISTURB）" aria-label="招牌主标题">
+            <input type="text" id="bb-subtext" class="text-input" maxlength="48" value="" placeholder="副标题（留空为单行大字，填字自动双行）" aria-label="招牌副标题">
+          </div>
+
+          <div class="ctrl-row" style="margin-top:12px">
+            <span class="ctrl-label">字体风格</span>
+            <div class="seg" role="group" aria-label="招牌字体风格" id="bb-font-seg">
+              <button type="button" data-val="bold" aria-pressed="true">粗雅黑</button>
+              <button type="button" data-val="impact" aria-pressed="false">超粗体</button>
+              <button type="button" data-val="mono" aria-pressed="false">等宽</button>
+              <button type="button" data-val="sans" aria-pressed="false">细体</button>
+              <button type="button" data-val="serif" aria-pressed="false">宋体</button>
+            </div>
+          </div>
+
+          <div class="ctrl-row" style="margin-top:10px">
+            <span class="ctrl-label">边框装饰</span>
+            <div class="seg" role="group" aria-label="招牌边框装饰" id="bb-border-seg">
+              <button type="button" data-val="none" aria-pressed="false">无</button>
+              <button type="button" data-val="frame" aria-pressed="false">细框</button>
+              <button type="button" data-val="corners" aria-pressed="true">准星</button>
+              <button type="button" data-val="pill" aria-pressed="false">胶囊</button>
+              <button type="button" data-val="bars" aria-pressed="false">音柱</button>
+            </div>
+          </div>
+
+          <div class="ctrl-row" style="margin-top:10px">
+            <span class="ctrl-label">动效模式</span>
+            <div class="seg" role="group" aria-label="招牌动效模式" id="bb-motion-seg">
+              <button type="button" data-val="static" aria-pressed="true">静态</button>
+              <button type="button" data-val="pulse" aria-pressed="false">呼吸框</button>
+              <button type="button" data-val="bars" aria-pressed="false">跃动音柱</button>
+              <button type="button" data-val="cursor" aria-pressed="false">闪烁光标</button>
+            </div>
+          </div>
+
+          <div class="slider-grid slider-grid-3">
+            <div class="slider-field">
+              <div class="slider-field-head">
+                <label for="bb-size">字号</label>
+                <span id="bb-size-val" class="val mono">22px</span>
+              </div>
+              <input type="range" id="bb-size" min="14" max="30" step="1" value="22">
+            </div>
+            <div class="slider-field">
+              <div class="slider-field-head">
+                <label for="bb-stroke">加粗描边</label>
+                <span id="bb-stroke-val" class="val mono">1px</span>
+              </div>
+              <input type="range" id="bb-stroke" min="0" max="2" step="1" value="1">
+            </div>
+            <div class="slider-field">
+              <div class="slider-field-head">
+                <label for="bb-tracking">字距</label>
+                <span id="bb-tracking-val" class="val mono">0px</span>
+              </div>
+              <input type="range" id="bb-tracking" min="-2" max="6" step="1" value="0">
+            </div>
+          </div>
+
+          <div class="chip-row">
+            <label class="chip-toggle"><input type="checkbox" id="bb-invert"><span>反白底</span></label>
+            <label class="chip-toggle"><input type="checkbox" id="bb-standby" checked><span>设为待机画面</span></label>
+            <label class="chip-toggle"><input type="checkbox" id="bb-pause"><span>上传后暂停歌词</span></label>
+            <label class="chip-toggle"><input type="checkbox" id="bb-save-lib" checked><span>存入素材库</span></label>
+          </div>
+
+          <div class="actions">
+            <button type="button" id="btn-bb-upload" class="primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              推送招牌到音箱
+            </button>
+            <button type="button" id="btn-bb-save">仅存入素材库</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Local Pixel Asset Library + Built-in Presets -->
+      <div id="studio-pane-library" class="library-pane" hidden>
+        <div id="library-grid" class="library-grid"></div>
+        <div id="library-empty" class="library-empty" hidden>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+          <p class="library-empty-title">素材库还没有收藏作品</p>
+          <p class="hint" style="margin:0">在「图片 / GIF」或「文字招牌」中上传或点击存库后，作品会保存在本地随时一键回传；也可以直接试试下方内置像素预设。</p>
+        </div>
+
+        <div class="divider"></div>
+        <div class="card-head" style="margin-bottom:10px">
+          <p class="label">内置像素预设（即点即传）</p>
+          <span class="hint" style="margin:0">纯算法生成 256×32 像素素材，可一键推送到音箱并收藏</span>
+        </div>
+        <div id="preset-grid" class="preset-grid"></div>
       </div>
     </section>
 
@@ -454,6 +591,7 @@
       </div>
     </div>
     <pre id="modal-notes" class="modal-notes" hidden></pre>
+    <input type="text" id="modal-input" class="text-input" maxlength="48" hidden style="margin-top:12px" aria-label="输入名称">
     <div class="modal-actions">
       <button type="button" id="modal-cancel">取消</button>
       <button type="button" id="modal-confirm" class="primary">确认</button>

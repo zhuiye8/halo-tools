@@ -74,9 +74,20 @@ def test_invert_and_threshold_change_pixels():
     assert bitmap.pixel_bytes(high.frames[0]) != bitmap.pixel_bytes(normal.frames[0])
 
 
-def test_rejects_too_many_frames():
+def test_auto_samples_long_gif_and_strict_rejects():
+    long_gif = png_bytes(frames=16)
+    sampled = bitmap.load(long_gif, "long.gif")
+    assert sampled.source_frames == 16
+    assert sampled.sampled is True
+    assert len(sampled.frames) == bitmap.MAX_FRAMES
+    assert all(d >= 100 for d in sampled.delays)
+
+    selected = bitmap.apply_options(sampled, selected_indices=[0, 2, 4], speed=2.0)
+    assert len(selected.frames) == 3
+    assert selected.animated is True
+
     with pytest.raises(bitmap.AssetError):
-        bitmap.load(png_bytes(frames=9), "nine.gif")
+        bitmap.load(png_bytes(frames=9), "nine.gif", auto_sample=False)
 
 
 def test_rejects_garbage():

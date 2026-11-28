@@ -113,25 +113,58 @@ function enhanceSelect(sel) {
       sel.value = opt.value;
       syncSelectUI(sel);
       closeAllSelects();
+      btn.focus();
       sel.dispatchEvent(new Event('change', { bubbles: true }));
     };
     menu.appendChild(item);
   });
 
+  const openMenu = () => {
+    closeAllSelects(wrap);
+    const rect = btn.getBoundingClientRect();
+    menu.classList.toggle('up', window.innerHeight - rect.bottom < 240 && rect.top > 240);
+    menu.hidden = false;
+    wrap.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
+  };
+
   btn.onclick = (e) => {
     e.stopPropagation();
-    const opening = menu.hidden;
-    closeAllSelects(wrap);
-    if (opening) {
-      const rect = btn.getBoundingClientRect();
-      menu.classList.toggle('up', window.innerHeight - rect.bottom < 240 && rect.top > 240);
-      menu.hidden = false;
-      wrap.classList.add('open');
-      btn.setAttribute('aria-expanded', 'true');
-    } else {
-      closeAllSelects();
-    }
+    if (menu.hidden) openMenu();
+    else closeAllSelects();
   };
+
+  wrap.addEventListener('keydown', (e) => {
+    const opts = Array.from(menu.querySelectorAll('.cselect-opt'));
+    if (!opts.length) return;
+    if (menu.hidden) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        openMenu();
+        const cur = opts.find((o) => o.getAttribute('aria-selected') === 'true') || opts[0];
+        cur.focus();
+      }
+      return;
+    }
+    const idx = opts.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      opts[(idx + 1 + opts.length) % opts.length].focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      opts[(idx - 1 + opts.length) % opts.length].focus();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      opts[0].focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      opts[opts.length - 1].focus();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeAllSelects();
+      btn.focus();
+    }
+  });
 
   wrap.appendChild(btn);
   wrap.appendChild(menu);
@@ -151,16 +184,29 @@ function initCustomSelects() {
 
 // ---------------------------------------------------------------------- toast
 let toastTimer = null;
+let toastRemaining = 1800;
 function showToast(message, isError = false) {
   const el = $('toast');
   el.textContent = message;
+  el.setAttribute('role', isError ? 'alert' : 'status');
+  el.setAttribute('aria-live', isError ? 'assertive' : 'polite');
   el.className = 'toast show' + (isError ? ' err' : '');
+  toastRemaining = isError ? 3400 : 2000;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.className = 'toast'; }, isError ? 3200 : 1800);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, toastRemaining);
 }
+
+$('toast').addEventListener('mouseenter', () => clearTimeout(toastTimer));
+$('toast').addEventListener('mouseleave', () => {
+  if ($('toast').classList.contains('show')) {
+    toastTimer = setTimeout(() => { $('toast').className = 'toast'; }, 1200);
+  }
+});
 
 // --------------------------------------------------------------- modal dialog
 let activeModalResolve = null;
+let activeModalMode = 'confirm';
+let lastFocusedBeforeModal = null;
 
 function closeModal(result = false) {
   const backdrop = $('modal-backdrop');
@@ -168,15 +214,38 @@ function closeModal(result = false) {
   backdrop.hidden = true;
   const resolve = activeModalResolve;
   activeModalResolve = null;
+  const prevFocus = lastFocusedBeforeModal;
+  lastFocusedBeforeModal = null;
+  if (prevFocus && typeof prevFocus.focus === 'function') {
+    prevFocus.focus();
+  }
   if (resolve) resolve(result);
 }
 
-function showConfirm({ title, body, notes = '', confirmText = '确认', cancelText = '取消' }) {
+function showConfirm({
+  title,
+  body,
+  notes = '',
+  confirmText = '确认',
+  cancelText = '取消',
+  danger = false,
+  inputValue = null,
+  inputPlaceholder = '',
+}) {
   return new Promise((resolve) => {
     if (activeModalResolve) closeModal(false);
+    lastFocusedBeforeModal = document.activeElement;
     activeModalResolve = resolve;
+    activeModalMode = inputValue !== null ? 'prompt' : (danger ? 'danger' : 'confirm');
+
+    const card = $('modal-card');
+    card.setAttribute('role', danger ? 'alertdialog' : 'dialog');
+    const icon = card.querySelector('.modal-icon');
+    if (icon) icon.classList.toggle('danger', !!danger);
+
     $('modal-title').textContent = title || '确认操作';
     $('modal-body').textContent = body || '';
+
     const notesEl = $('modal-notes');
     const trimmed = String(notes || '').trim();
     if (trimmed) {
@@ -185,23 +254,74 @@ function showConfirm({ title, body, notes = '', confirmText = '确认', cancelTe
     } else {
       notesEl.hidden = true;
     }
-    $('modal-confirm').textContent = confirmText;
+
+    const inputEl = $('modal-input');
+    if (inputValue !== null) {
+      inputEl.hidden = false;
+      inputEl.value = String(inputValue);
+      inputEl.placeholder = inputPlaceholder || '';
+    } else {
+      inputEl.hidden = true;
+    }
+
+    const confirmBtn = $('modal-confirm');
+    confirmBtn.textContent = confirmText;
+    confirmBtn.className = danger ? 'danger' : 'primary';
     $('modal-cancel').textContent = cancelText;
     $('modal-backdrop').hidden = false;
-    $('modal-confirm').focus();
+
+    if (inputValue !== null) {
+      inputEl.focus();
+      inputEl.select();
+    } else if (danger) {
+      // Apple HIG: destructive confirmation defaults focus to safe Cancel action
+      $('modal-cancel').focus();
+    } else {
+      confirmBtn.focus();
+    }
   });
 }
 
-$('modal-cancel').onclick = () => closeModal(false);
-$('modal-confirm').onclick = () => closeModal(true);
+$('modal-cancel').onclick = () => closeModal(activeModalMode === 'prompt' ? null : false);
+$('modal-confirm').onclick = () => {
+  if (activeModalMode === 'prompt') {
+    closeModal($('modal-input').value.trim());
+  } else {
+    closeModal(true);
+  }
+};
+$('modal-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    $('modal-confirm').click();
+  }
+});
 $('modal-backdrop').addEventListener('click', (e) => {
-  if (e.target === $('modal-backdrop')) closeModal(false);
+  if (e.target === $('modal-backdrop') && activeModalMode !== 'danger') {
+    closeModal(activeModalMode === 'prompt' ? null : false);
+  }
 });
 document.addEventListener('keydown', (e) => {
   if ($('modal-backdrop').hidden) return;
   if (e.key === 'Escape') {
     e.preventDefault();
-    closeModal(false);
+    closeModal(activeModalMode === 'prompt' ? null : false);
+    return;
+  }
+  if (e.key === 'Tab') {
+    const focusables = Array.from(
+      $('modal-card').querySelectorAll('button:not([hidden]):not(:disabled), input:not([hidden]):not(:disabled)')
+    );
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
   }
 });
 
@@ -483,7 +603,9 @@ function setSegValue(segId, val) {
 function syncSwatches(rgb) {
   const key = Array.isArray(rgb) ? rgb.join(',') : '';
   $('color-swatches').querySelectorAll('.swatch').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.rgb === key);
+    const active = btn.dataset.rgb === key;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', String(active));
   });
   const hex = rgbToHex(rgb);
   if (document.activeElement !== $('color-picker')) {
@@ -504,7 +626,9 @@ function syncAmbientUI(amb) {
   const rgb = amb.color || [195, 185, 255];
   const key = Array.isArray(rgb) ? rgb.join(',') : '';
   $('ambient-swatches').querySelectorAll('.swatch').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.rgb === key);
+    const active = btn.dataset.rgb === key;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', String(active));
   });
   if (document.activeElement !== $('ambient-color-picker')) {
     $('ambient-color-picker').value = rgbToHex(rgb);
@@ -1095,32 +1219,298 @@ function renderPreview() {
   $('asset-empty').style.display = 'none';
 }
 
+// Helper: tint a crisp monochrome PNG data URL into active LED colour on a 1024x128 canvas
+function drawTintedImageOnCanvas(img, canvas) {
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = '#07060b';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (!img) return;
+
+  const off = tmpOutCanvas;
+  const octx = off.getContext('2d', { willReadFrequently: true });
+  octx.imageSmoothingEnabled = false;
+  octx.clearRect(0, 0, SCREEN_W, SCREEN_H);
+  octx.drawImage(img, 0, 0, SCREEN_W, SCREEN_H);
+  const data = octx.getImageData(0, 0, SCREEN_W, SCREEN_H);
+  const [lr, lg, lb] = hexToRgb(activeColorHex);
+  const px = data.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const on = px[i] >= 128;
+    px[i] = on ? lr : 7;
+    px[i + 1] = on ? lg : 6;
+    px[i + 2] = on ? lb : 11;
+    px[i + 3] = 255;
+  }
+  octx.putImageData(data, 0, 0);
+  ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+}
+
+function loadImgElement(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+async function fileToBase64(file) {
+  const buffer = await file.arrayBuffer();
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+// ------------------------------------------------ Studio 2.0 tabs
+let activeStudioTab = 'image';
+const STUDIO_TIPS = {
+  image: '支持拖拽、粘贴图片或长 GIF（自动均匀抽选 8 帧）',
+  billboard: '自定义 Windows 粗体字、描边、双行与 4 帧动态边框，实时预览',
+  library: '已保存的本地像素素材与内置预设，随时一键回传到音箱',
+};
+
+function setStudioTab(tab) {
+  activeStudioTab = tab;
+  $('studio-tabs').querySelectorAll('button[data-tab]').forEach((btn) => {
+    const active = btn.dataset.tab === tab;
+    btn.setAttribute('aria-selected', String(active));
+    btn.setAttribute('aria-pressed', String(active));
+  });
+  $('studio-pane-image').hidden = tab !== 'image';
+  $('studio-pane-billboard').hidden = tab !== 'billboard';
+  $('studio-pane-library').hidden = tab !== 'library';
+  $('studio-tip').textContent = STUDIO_TIPS[tab] || '';
+  if (tab === 'billboard') {
+    if (!bbFrames.length) scheduleBillboardRender(true);
+    else startBillboardPlayback();
+  } else {
+    stopBillboardPlayback();
+  }
+  if (tab === 'library') {
+    loadLibrary();
+  }
+}
+
+$('studio-tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-tab]');
+  if (btn) setStudioTab(btn.dataset.tab);
+});
+
+// --------------------------------------------- Multi-frame GIF playback & strip
+let selectedFileB64 = '';
+let gifFrames = []; // [{ index, delay, preview, img, included }]
+let gifCursor = 0;
+let gifPlaying = true;
+let gifTimer = null;
+let gifInspectTimer = null;
+
+function stopGifPlayback() {
+  if (gifTimer) { clearTimeout(gifTimer); gifTimer = null; }
+}
+
+function includedGifFrames() {
+  return gifFrames.filter((f) => f.included);
+}
+
+function renderGifFrameAt(pos) {
+  const list = includedGifFrames();
+  if (!list.length) return;
+  const idx = ((pos % list.length) + list.length) % list.length;
+  gifCursor = idx;
+  const frame = list[idx];
+  drawTintedImageOnCanvas(frame.img, $('asset-canvas'));
+  $('asset-empty').style.display = 'none';
+  $('gif-frame-badge').textContent = `帧 ${idx + 1} / ${list.length}`;
+  $('gif-strip').querySelectorAll('.gif-frame').forEach((el) => {
+    el.classList.toggle('active', Number(el.dataset.index) === frame.index);
+  });
+}
+
+function scheduleNextGifTick() {
+  stopGifPlayback();
+  const list = includedGifFrames();
+  if (!gifPlaying || list.length <= 1) return;
+  const cur = list[gifCursor % list.length];
+  const speed = Number($('gif-speed').value || 1.0);
+  const delay = Math.max(100, Math.round((cur.delay || 160) / speed));
+  gifTimer = setTimeout(() => {
+    renderGifFrameAt(gifCursor + 1);
+    scheduleNextGifTick();
+  }, delay);
+}
+
+function renderGifStrip() {
+  const strip = $('gif-strip');
+  strip.innerHTML = '';
+  if (gifFrames.length <= 1) {
+    $('gif-bar').hidden = true;
+    return;
+  }
+  $('gif-bar').hidden = false;
+  const frag = document.createDocumentFragment();
+  for (const frame of gifFrames) {
+    const card = document.createElement('div');
+    card.className = 'gif-frame' + (frame.included ? '' : ' excluded');
+    card.dataset.index = String(frame.index);
+    card.setAttribute('role', 'listitem');
+
+    const img = document.createElement('img');
+    img.src = frame.preview;
+    img.alt = `第 ${frame.index + 1} 帧`;
+
+    const meta = document.createElement('div');
+    meta.className = 'gif-frame-meta mono';
+    const label = document.createElement('span');
+    label.textContent = `#${frame.index + 1} · ${frame.delay}ms`;
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'gif-frame-toggle';
+    toggleBtn.textContent = frame.included ? '✓' : '×';
+    toggleBtn.title = frame.included ? '点击剔除此帧' : '点击重新启用此帧';
+    toggleBtn.setAttribute('aria-label', toggleBtn.title);
+    toggleBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (frame.included && includedGifFrames().length <= 1) {
+        showToast('至少需要保留 1 帧', true);
+        return;
+      }
+      frame.included = !frame.included;
+      card.classList.toggle('excluded', !frame.included);
+      toggleBtn.textContent = frame.included ? '✓' : '×';
+      renderGifFrameAt(0);
+      scheduleNextGifTick();
+    };
+
+    meta.appendChild(label);
+    meta.appendChild(toggleBtn);
+    card.appendChild(img);
+    card.appendChild(meta);
+    card.onclick = () => {
+      const list = includedGifFrames();
+      const pos = list.findIndex((f) => f.index === frame.index);
+      if (pos >= 0) {
+        gifPlaying = false;
+        $('btn-gif-play').textContent = '播放';
+        stopGifPlayback();
+        renderGifFrameAt(pos);
+      }
+    };
+    frag.appendChild(card);
+  }
+  strip.appendChild(frag);
+}
+
+async function inspectCurrentGif() {
+  if (!selectedFile || !selectedFileB64) return;
+  const prevIncluded = new Map(gifFrames.map((f) => [f.index, f.included]));
+  const opts = currentOptions();
+  const res = await api('/api/asset/inspect', {
+    method: 'POST',
+    body: JSON.stringify({
+      filename: selectedFile.name || 'animation.gif',
+      data: selectedFileB64,
+      ...opts,
+    }),
+  });
+  if (res.error) {
+    showToast(res.error, true);
+    return;
+  }
+  const decoded = await Promise.all((res.frames || []).map(async (f) => ({
+    index: f.index,
+    delay: f.delay,
+    preview: f.preview,
+    img: await loadImgElement(f.preview),
+    included: prevIncluded.has(f.index) ? prevIncluded.get(f.index) : true,
+  })));
+  gifFrames = decoded;
+  $('gif-sample-note').textContent = res.sampled
+    ? `原 ${res.source_frames} 帧 → 已均匀抽选 ${decoded.length} 帧`
+    : `${decoded.length} 帧动画`;
+  renderGifStrip();
+  if (decoded.length > 1) {
+    gifPlaying = true;
+    $('btn-gif-play').textContent = '暂停';
+    renderGifFrameAt(0);
+    scheduleNextGifTick();
+  } else if (decoded.length === 1) {
+    drawTintedImageOnCanvas(decoded[0].img, $('asset-canvas'));
+  }
+}
+
+function scheduleGifInspect() {
+  if (gifFrames.length <= 1 && !(selectedFile && /\.gif$/i.test(selectedFile.name || ''))) return;
+  clearTimeout(gifInspectTimer);
+  gifInspectTimer = setTimeout(inspectCurrentGif, 200);
+}
+
+$('btn-gif-play').onclick = () => {
+  gifPlaying = !gifPlaying;
+  $('btn-gif-play').textContent = gifPlaying ? '暂停' : '播放';
+  if (gifPlaying) scheduleNextGifTick();
+  else stopGifPlayback();
+};
+
+$('gif-speed').addEventListener('input', () => {
+  const el = $('gif-speed');
+  paintSlider(el);
+  $('gif-speed-val').textContent = `${Number(el.value).toFixed(1)}×`;
+  if (gifPlaying) scheduleNextGifTick();
+});
+
 function resetView() {
   view.zoom = 1; view.offsetX = 0; view.offsetY = 0;
   $('asset-zoom').value = 1;
   $('asset-zoom-val').textContent = '100%';
   paintSlider($('asset-zoom'));
   renderPreview();
+  scheduleGifInspect();
 }
 
 async function loadImageFile(file) {
   if (!file) return;
+  stopGifPlayback();
+  gifFrames = [];
+  $('gif-bar').hidden = true;
   selectedFile = file;
+  selectedFileB64 = '';
+  const isGif = file.type === 'image/gif' || /\.gif$/i.test(file.name || '');
+
   try {
     setSourceImage(await createImageBitmap(file));
   } catch (e) {
-    showToast('无法读取这张图片', true);
-    return;
+    if (!isGif) {
+      showToast('无法读取这张图片', true);
+      return;
+    }
   }
-  const label = `${file.name || '剪贴板图片'} · ${sourceImage.width}×${sourceImage.height}`;
+  const dim = sourceImage ? ` · ${sourceImage.width}×${sourceImage.height}` : '';
+  const label = `${file.name || '剪贴板图片'}${dim}`;
   $('asset-info').textContent = label;
   if ($('file-drop-label')) $('file-drop-label').textContent = label;
-  $('asset-progress').textContent = '';
+  $('asset-progress').textContent = isGif ? '解析多帧 GIF…' : '';
   resetView();
+
+  if (isGif) {
+    selectedFileB64 = await fileToBase64(file);
+    await inspectCurrentGif();
+    $('asset-progress').textContent = '';
+  }
 }
 
 $('asset-file').onchange = () => loadImageFile($('asset-file').files[0]);
 $('asset-empty').onclick = () => $('asset-file').click();
+$('asset-empty').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    $('asset-file').click();
+  }
+});
 
 $('asset-fit-seg').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-val]');
@@ -1128,6 +1518,7 @@ $('asset-fit-seg').addEventListener('click', (e) => {
   setSegValue('asset-fit-seg', btn.dataset.val);
   $('asset-fit').value = btn.dataset.val;
   renderPreview();
+  scheduleGifInspect();
 });
 
 // Drag & drop + clipboard paste
@@ -1138,7 +1529,10 @@ dropzone.addEventListener('drop', (e) => {
   e.preventDefault();
   dropzone.classList.remove('dragover');
   const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-  if (file) loadImageFile(file);
+  if (file) {
+    setStudioTab('image');
+    loadImageFile(file);
+  }
 });
 
 window.addEventListener('paste', (e) => {
@@ -1148,6 +1542,7 @@ window.addEventListener('paste', (e) => {
     if (item.type && item.type.startsWith('image/')) {
       const file = item.getAsFile();
       if (file) {
+        setStudioTab('image');
         loadImageFile(file);
         showToast('已从剪贴板载入图片');
         break;
@@ -1165,8 +1560,12 @@ window.addEventListener('paste', (e) => {
       if (id === 'asset-contrast') $('asset-contrast-val').textContent = Number(el.value).toFixed(1);
       if (el.type === 'range') paintSlider(el);
       renderPreview();
+      scheduleGifInspect();
     });
-    el.addEventListener('change', renderPreview);
+    el.addEventListener('change', () => {
+      renderPreview();
+      scheduleGifInspect();
+    });
   });
 
 $('asset-zoom').addEventListener('input', () => {
@@ -1175,6 +1574,7 @@ $('asset-zoom').addEventListener('input', () => {
   $('asset-zoom-val').textContent = Math.round(view.zoom * 100) + '%';
   paintSlider(el);
   renderPreview();
+  scheduleGifInspect();
 });
 
 const viewCanvasEl = $('asset-canvas');
@@ -1197,6 +1597,7 @@ viewCanvasEl.addEventListener('pointerup', (e) => {
   view.dragging = false;
   viewCanvasEl.classList.remove('dragging');
   viewCanvasEl.releasePointerCapture(e.pointerId);
+  scheduleGifInspect();
 });
 viewCanvasEl.addEventListener('wheel', (e) => {
   if (!sourceImage) return;
@@ -1206,11 +1607,16 @@ viewCanvasEl.addEventListener('wheel', (e) => {
   $('asset-zoom-val').textContent = Math.round(view.zoom * 100) + '%';
   paintSlider($('asset-zoom'));
   renderPreview();
+  scheduleGifInspect();
 }, { passive: false });
 
 $('btn-reset-view').onclick = resetView;
 
 function loadSample() {
+  stopGifPlayback();
+  gifFrames = [];
+  selectedFileB64 = '';
+  $('gif-bar').hidden = true;
   const c = document.createElement('canvas');
   c.width = 256; c.height = 32;
   const ctx = c.getContext('2d');
@@ -1238,36 +1644,31 @@ function loadSample() {
 
 $('btn-sample').onclick = loadSample;
 
-$('btn-upload').onclick = async () => {
+async function submitAsset({ uploadToDevice = true } = {}) {
   const file = selectedFile || $('asset-file').files[0];
-  if (!file) { showToast('先选择、拖拽或粘贴一张图片', true); return; }
-  const buffer = await file.arrayBuffer();
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  }
+  if (!file) { showToast('先选择、拖拽或粘贴一张图片或 GIF', true); return; }
+  const b64 = selectedFileB64 || await fileToBase64(file);
   const opts = currentOptions();
+  const body = {
+    filename: file.name || 'clipboard.png',
+    data: b64,
+    ...opts,
+    as_standby: $('asset-standby').checked,
+    pause_after: $('asset-pause').checked,
+    save_to_library: uploadToDevice ? $('asset-save-lib').checked : true,
+    upload_to_device: uploadToDevice,
+  };
+  if (gifFrames.length > 1) {
+    body.selected_indices = includedGifFrames().map((f) => f.index);
+    body.speed = Number($('gif-speed').value || 1.0);
+  }
   $('btn-upload').disabled = true;
-  $('asset-progress').textContent = '处理中…';
+  $('btn-save-lib').disabled = true;
+  $('asset-progress').textContent = uploadToDevice ? '处理并上传…' : '正在存入素材库…';
   try {
     const result = await api('/api/asset/upload', {
       method: 'POST',
-      body: JSON.stringify({
-        filename: file.name || 'clipboard.png',
-        data: btoa(binary),
-        fit: opts.fit,
-        threshold: opts.threshold,
-        invert: opts.invert,
-        dither: opts.dither,
-        zoom: opts.zoom,
-        offset_x: opts.offset_x,
-        offset_y: opts.offset_y,
-        brightness: opts.brightness,
-        contrast: opts.contrast,
-        as_standby: $('asset-standby').checked,
-        pause_after: $('asset-pause').checked,
-      }),
+      body: JSON.stringify(body),
     });
     if (result.error) {
       $('asset-progress').textContent = '失败：' + result.error;
@@ -1275,17 +1676,22 @@ $('btn-upload').onclick = async () => {
     } else {
       lastAsset = result;
       $('asset-info').textContent = `${file.name || '图片'} · ${result.frames} 帧 · ${(result.bytes / 1024).toFixed(1)} KB`;
-      $('asset-progress').textContent = result.animated ? '已提交（动画）' : '已提交';
-      showToast('素材已提交上传');
+      $('asset-progress').textContent = uploadToDevice ? (result.animated ? '已提交（动画）' : '已提交') : '已存入素材库';
+      showToast(uploadToDevice ? '素材已提交上传' : '已存入本地素材库');
+      if (result.library_item) loadLibrary();
     }
   } catch (e) {
-    $('asset-progress').textContent = '上传请求失败';
+    $('asset-progress').textContent = '请求失败';
     showToast('上传请求失败', true);
   } finally {
     $('btn-upload').disabled = false;
+    $('btn-save-lib').disabled = false;
     refresh();
   }
-};
+}
+
+$('btn-upload').onclick = () => submitAsset({ uploadToDevice: true });
+$('btn-save-lib').onclick = () => submitAsset({ uploadToDevice: false });
 
 $('btn-showasset').onclick = async () => {
   const body = lastAsset ? { category: lastAsset.category, option: lastAsset.option } : {};
@@ -1294,6 +1700,307 @@ $('btn-showasset').onclick = async () => {
   else showToast('已切换到自定义素材');
   refresh();
 };
+
+// ------------------------------------------------ Billboard Text Studio
+const bbState = {
+  font_style: 'bold',
+  border: 'corners',
+  motion: 'static',
+};
+let bbFrames = [];
+let bbCursor = 0;
+let bbTimer = null;
+let bbRenderDebounce = null;
+
+function stopBillboardPlayback() {
+  if (bbTimer) { clearTimeout(bbTimer); bbTimer = null; }
+}
+
+function startBillboardPlayback() {
+  stopBillboardPlayback();
+  if (!bbFrames.length) return;
+  const frame = bbFrames[bbCursor % bbFrames.length];
+  drawTintedImageOnCanvas(frame.img, $('bb-canvas'));
+  if (bbFrames.length > 1 && activeStudioTab === 'billboard') {
+    bbTimer = setTimeout(() => {
+      bbCursor = (bbCursor + 1) % bbFrames.length;
+      startBillboardPlayback();
+    }, Math.max(120, frame.delay || 320));
+  }
+}
+
+function billboardPayload() {
+  return {
+    text: $('bb-text').value,
+    subtext: $('bb-subtext').value,
+    font_style: bbState.font_style,
+    font_size: Number($('bb-size').value),
+    bold_stroke: Number($('bb-stroke').value),
+    tracking: Number($('bb-tracking').value),
+    border: bbState.border,
+    motion: bbState.motion,
+    invert: $('bb-invert').checked,
+  };
+}
+
+async function renderBillboardNow() {
+  const payload = billboardPayload();
+  if (!payload.text.trim() && !payload.subtext.trim()) return;
+  const res = await api('/api/billboard/render', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (res.error) return;
+  bbFrames = await Promise.all((res.frames || []).map(async (f) => ({
+    delay: f.delay,
+    img: await loadImgElement(f.preview),
+  })));
+  bbCursor = 0;
+  $('bb-mode-tag').textContent = res.animated ? `动态 ${bbFrames.length} 帧` : '静态 1 帧';
+  $('bb-info').textContent = `${res.name} · 256×32`;
+  startBillboardPlayback();
+}
+
+function scheduleBillboardRender(immediate = false) {
+  clearTimeout(bbRenderDebounce);
+  bbRenderDebounce = setTimeout(renderBillboardNow, immediate ? 0 : 140);
+}
+
+['bb-text', 'bb-subtext'].forEach((id) => {
+  $(id).addEventListener('input', () => scheduleBillboardRender());
+});
+$('bb-invert').addEventListener('change', () => scheduleBillboardRender(true));
+
+['bb-size', 'bb-stroke', 'bb-tracking'].forEach((id) => {
+  const el = $(id);
+  el.addEventListener('input', () => {
+    paintSlider(el);
+    $(`${id}-val`).textContent = `${el.value}px`;
+    scheduleBillboardRender();
+  });
+});
+
+[
+  ['bb-font-seg', 'font_style'],
+  ['bb-border-seg', 'border'],
+  ['bb-motion-seg', 'motion'],
+].forEach(([segId, key]) => {
+  $(segId).addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-val]');
+    if (!btn) return;
+    setSegValue(segId, btn.dataset.val);
+    bbState[key] = btn.dataset.val;
+    scheduleBillboardRender(true);
+  });
+});
+
+async function submitBillboard({ uploadToDevice = true } = {}) {
+  const payload = {
+    ...billboardPayload(),
+    as_standby: $('bb-standby').checked,
+    pause_after: $('bb-pause').checked,
+    save_to_library: uploadToDevice ? $('bb-save-lib').checked : true,
+    upload_to_device: uploadToDevice,
+  };
+  if (!payload.text.trim() && !payload.subtext.trim()) {
+    showToast('请先输入招牌文字', true);
+    $('bb-text').focus();
+    return;
+  }
+  $('btn-bb-upload').disabled = true;
+  $('btn-bb-save').disabled = true;
+  try {
+    const res = await api('/api/billboard/upload', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (res.error) {
+      showToast(res.error, true);
+    } else {
+      lastAsset = res;
+      showToast(uploadToDevice ? `招牌「${res.name}」已推送到音箱` : `已存入素材库：${res.name}`);
+      if (res.library_item) loadLibrary();
+    }
+  } finally {
+    $('btn-bb-upload').disabled = false;
+    $('btn-bb-save').disabled = false;
+    refresh();
+  }
+}
+
+$('btn-bb-upload').onclick = () => submitBillboard({ uploadToDevice: true });
+$('btn-bb-save').onclick = () => submitBillboard({ uploadToDevice: false });
+
+// ------------------------------------------------ Local Pixel Asset Library
+let libraryItems = [];
+let libraryPresets = [];
+
+async function loadLibrary() {
+  try {
+    const res = await api('/api/library');
+    if (res.error) return;
+    libraryItems = res.items || [];
+    libraryPresets = res.presets || [];
+    $('library-count').textContent = String(libraryItems.length);
+    renderLibrary();
+  } catch (e) { /* ignore */ }
+}
+
+function renderLibrary() {
+  const grid = $('library-grid');
+  const empty = $('library-empty');
+  grid.innerHTML = '';
+  empty.hidden = libraryItems.length > 0;
+
+  const frag = document.createDocumentFragment();
+  for (const item of libraryItems) {
+    const card = document.createElement('div');
+    card.className = 'lib-card';
+
+    const thumb = document.createElement('div');
+    thumb.className = 'lib-thumb';
+    const img = document.createElement('img');
+    img.src = item.preview || '';
+    img.alt = item.name;
+    thumb.appendChild(img);
+
+    const row = document.createElement('div');
+    row.className = 'lib-row';
+    const title = document.createElement('p');
+    title.className = 'lib-name';
+    title.textContent = item.name;
+    title.title = item.name;
+    const badge = document.createElement('span');
+    badge.className = 'chip no-dot mono';
+    badge.style.height = '22px';
+    badge.style.fontSize = '11px';
+    badge.textContent = item.animated ? `${item.frames} 帧` : '静图';
+    row.appendChild(title);
+    row.appendChild(badge);
+
+    const actions = document.createElement('div');
+    actions.className = 'lib-actions';
+
+    const pushBtn = document.createElement('button');
+    pushBtn.type = 'button';
+    pushBtn.className = 'primary sm';
+    pushBtn.textContent = '推送到音箱';
+    pushBtn.onclick = async () => {
+      pushBtn.disabled = true;
+      const res = await api('/api/library/push', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: item.id,
+          as_standby: $('asset-standby').checked,
+          pause_after: $('asset-pause').checked,
+        }),
+      });
+      pushBtn.disabled = false;
+      if (res.error) showToast(res.error, true);
+      else showToast(`已推送「${item.name}」到音箱`);
+      refresh();
+    };
+
+    const renameBtn = document.createElement('button');
+    renameBtn.type = 'button';
+    renameBtn.className = 'sm subtle';
+    renameBtn.textContent = '重命名…';
+    renameBtn.onclick = async () => {
+      const next = await showConfirm({
+        title: '重命名素材',
+        body: '为这份 256×32 像素素材设置新名称：',
+        inputValue: item.name,
+        inputPlaceholder: '输入素材名称',
+        confirmText: '保存名称',
+        cancelText: '取消',
+      });
+      if (!next || next === item.name) return;
+      const res = await api('/api/library/rename', {
+        method: 'POST',
+        body: JSON.stringify({ id: item.id, name: next }),
+      });
+      if (res.error) showToast(res.error, true);
+      else {
+        showToast('已重命名');
+        loadLibrary();
+      }
+    };
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'sm danger-subtle';
+    delBtn.textContent = '删除';
+    delBtn.onclick = async () => {
+      const ok = await showConfirm({
+        title: `删除「${item.name}」？`,
+        body: '删除后将从本地素材库移除（不会影响音箱当前已写入的画面）。',
+        confirmText: '删除素材',
+        cancelText: '取消',
+        danger: true,
+      });
+      if (!ok) return;
+      const res = await api('/api/library/delete', {
+        method: 'POST',
+        body: JSON.stringify({ id: item.id }),
+      });
+      if (res.error) showToast(res.error, true);
+      else {
+        showToast('已从素材库删除');
+        loadLibrary();
+      }
+    };
+
+    actions.appendChild(pushBtn);
+    actions.appendChild(renameBtn);
+    actions.appendChild(delBtn);
+
+    card.appendChild(thumb);
+    card.appendChild(row);
+    card.appendChild(actions);
+    frag.appendChild(card);
+  }
+  grid.appendChild(frag);
+
+  // Built-in procedural presets
+  const pgrid = $('preset-grid');
+  pgrid.innerHTML = '';
+  const pfrag = document.createDocumentFragment();
+  for (const preset of libraryPresets) {
+    const card = document.createElement('div');
+    card.className = 'preset-card';
+    card.innerHTML = `<div><h4></h4><p></p></div>`;
+    card.querySelector('h4').textContent = preset.name;
+    card.querySelector('p').textContent = preset.desc;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sm';
+    btn.textContent = '推送并收藏';
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const res = await api('/api/library/preset', {
+        method: 'POST',
+        body: JSON.stringify({
+          preset_id: preset.id,
+          as_standby: $('asset-standby').checked,
+          pause_after: $('asset-pause').checked,
+          save_to_library: true,
+          upload_to_device: true,
+        }),
+      });
+      btn.disabled = false;
+      if (res.error) showToast(res.error, true);
+      else {
+        showToast(`已推送预设「${preset.name}」`);
+        loadLibrary();
+        refresh();
+      }
+    };
+    card.appendChild(btn);
+    pfrag.appendChild(card);
+  }
+  pgrid.appendChild(pfrag);
+}
 
 // --------------------------------------------------- visibility-aware polling
 let statusTimer = null;
@@ -1312,10 +2019,14 @@ function stopPolling() {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     stopPolling();
+    stopGifPlayback();
+    stopBillboardPlayback();
   } else {
     refresh();
     refreshLogs();
     startPolling();
+    if (gifFrames.length > 1 && gifPlaying) scheduleNextGifTick();
+    if (activeStudioTab === 'billboard' && bbFrames.length > 1) startBillboardPlayback();
   }
 });
 
@@ -1323,4 +2034,5 @@ initCustomSelects();
 paintAllSliders();
 refresh();
 refreshLogs();
+loadLibrary();
 if (!document.hidden) startPolling();
