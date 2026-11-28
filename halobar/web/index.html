@@ -31,8 +31,8 @@
       <span id="health-chip" class="chip warn" hidden>SMTC 退避中</span>
       <span id="ver" class="chip no-dot mono">v-</span>
       <div class="seg" role="group" aria-label="外观主题" id="theme-seg">
-        <button type="button" data-theme="light" aria-pressed="false" title="浅色">浅</button>
-        <button type="button" data-theme="dark" aria-pressed="false" title="深色">深</button>
+        <button type="button" data-theme="light" aria-pressed="false" title="浅色">浅色</button>
+        <button type="button" data-theme="dark" aria-pressed="false" title="深色">深色</button>
         <button type="button" data-theme="system" aria-pressed="true" title="跟随系统">自动</button>
       </div>
     </div>
@@ -43,9 +43,10 @@
     <section class="card span-7">
       <div class="card-head">
         <p class="label">正在播放</p>
-        <div style="display:flex;gap:6px;align-items:center">
-          <button type="button" id="btn-candidates" class="sm">换词源</button>
-        </div>
+        <button type="button" id="btn-candidates" class="sm">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          换词源
+        </button>
       </div>
 
       <div class="mirror-bezel" aria-label="音箱像素屏实时镜像">
@@ -63,18 +64,16 @@
         </div>
       </div>
 
-      <!-- Candidate picker drawer -->
       <div id="candidate-panel" class="candidate-panel" hidden>
         <div class="card-head" style="margin-bottom:4px">
           <span class="label">选择匹配歌词（自动记住当前曲目）</span>
-          <button type="button" id="btn-close-candidates" class="sm">收起</button>
+          <button type="button" id="btn-close-candidates" class="sm subtle">收起</button>
         </div>
         <div id="candidate-list" class="candidate-list"></div>
       </div>
 
-      <!-- Interactive lyric timeline -->
       <div id="timeline" class="timeline" role="listbox" aria-label="歌词时间轴，点击任意一句对齐">
-        <div class="timeline-empty" id="timeline-empty">等待歌词加载…</div>
+        <div class="timeline-empty" id="timeline-empty">播放歌曲后这里会显示实时歌词时间轴</div>
       </div>
 
       <div class="progress"><i id="bar"></i></div>
@@ -90,9 +89,11 @@
       <div class="actions">
         <button type="button" id="btn-toggle" class="primary">暂停同步</button>
         <button type="button" id="btn-restore">恢复屏幕</button>
-        <button type="button" id="btn-minus" title="快捷键 [">−0.5s</button>
-        <button type="button" id="btn-plus" title="快捷键 ]">+0.5s</button>
-        <button type="button" id="btn-next">对齐下一句</button>
+        <div class="btn-group" role="group" aria-label="时间轴微调">
+          <button type="button" id="btn-minus" class="mono" title="快捷键 [">−0.5s</button>
+          <button type="button" id="btn-plus" class="mono" title="快捷键 ]">+0.5s</button>
+          <button type="button" id="btn-next">对齐下一句</button>
+        </div>
       </div>
       <p class="hint">点击歌词行可直接对齐时间；快捷键：空格暂停/恢复，<span class="mono">[</span> / <span class="mono">]</span> 微调 ±0.5s，偏移会按曲目自动记忆。</p>
     </section>
@@ -101,7 +102,7 @@
     <section class="card span-5">
       <div class="card-head">
         <p class="label">显示与硬件控制</p>
-        <span class="hint" style="margin:0">修改即生效</span>
+        <span class="live-tag">修改即生效</span>
       </div>
 
       <div class="ctrl-stack">
@@ -164,8 +165,9 @@
         </div>
 
         <div class="ctrl-row">
-          <label class="switch" title="对彩色做白平衡与 Gamma 2.0 亮度保持校正，抑制 LED 偏蓝发白">
-            <input type="checkbox" id="color-calibration" checked> LED 色彩校正（去偏蓝/保亮度）
+          <span class="ctrl-label" title="对彩色做白平衡与 Gamma 2.2 亮度保持校正，抑制 LED 偏蓝发白">LED 色彩校正</span>
+          <label class="toggle">
+            <input type="checkbox" id="color-calibration" checked>
           </label>
         </div>
 
@@ -189,20 +191,23 @@
         </div>
 
         <div class="ctrl-row">
-          <label class="ctrl-label" for="standby">暂停待机（秒）</label>
-          <input type="number" id="standby" class="mono" min="0" max="600" step="5" value="20">
+          <label class="ctrl-label" for="standby">暂停待机等待</label>
+          <div class="num-field">
+            <input type="number" id="standby" min="0" max="600" step="5" value="20">
+            <span>秒</span>
+          </div>
         </div>
 
         <div class="divider" style="margin:2px 0"></div>
 
         <div class="ctrl-row">
           <span class="label" style="margin:0">四周氛围灯带</span>
-          <div style="display:flex;gap:12px;align-items:center">
-            <label class="switch" style="font-size:12px">
-              <input type="checkbox" id="ambient-sync"> 同步屏幕色
+          <div style="display:flex;gap:14px;align-items:center">
+            <label class="toggle" style="font-size:12px">
+              同步屏幕色 <input type="checkbox" id="ambient-sync">
             </label>
-            <label class="switch" style="font-size:12px">
-              <input type="checkbox" id="ambient-power" checked> 开启
+            <label class="toggle" style="font-size:12px">
+              开启 <input type="checkbox" id="ambient-power" checked>
             </label>
           </div>
         </div>
@@ -237,17 +242,17 @@
 
           <div class="ctrl-row">
             <label class="ctrl-label" for="ambient-brightness">灯带亮度</label>
-            <div style="display:flex;align-items:center;gap:8px">
+            <div class="slider-inline">
               <input type="range" id="ambient-brightness" min="0" max="100" step="5" value="100">
-              <span id="ambient-brightness-val" class="mono" style="width:36px;text-align:right;font-size:12px">100%</span>
+              <span id="ambient-brightness-val" class="mono">100%</span>
             </div>
           </div>
 
           <div class="ctrl-row" id="ambient-speed-row">
             <label class="ctrl-label" for="ambient-speed">灯效速度</label>
-            <div style="display:flex;align-items:center;gap:8px">
+            <div class="slider-inline">
               <input type="range" id="ambient-speed" min="1" max="10" step="1" value="8">
-              <span id="ambient-speed-val" class="mono" style="width:36px;text-align:right;font-size:12px">8</span>
+              <span id="ambient-speed-val" class="mono">8</span>
             </div>
           </div>
         </div>
@@ -258,13 +263,16 @@
     <section class="card span-12">
       <div class="card-head">
         <p class="label">自定义像素屏工作台</p>
-        <span class="hint" style="margin:0">支持拖拽图片或 Ctrl+V 直接粘贴</span>
+        <span class="hint" style="margin:0">拖拽图片到预览区，或按 <span class="mono">Ctrl+V</span> 直接粘贴</span>
       </div>
       <div class="asset-editor">
         <div class="asset-preview-panel">
           <div class="screen-frame" id="asset-dropzone">
             <canvas id="asset-canvas" width="1024" height="128"></canvas>
-            <div class="screen-empty" id="asset-empty">拖拽、粘贴或选择一张图片 / GIF 开始编辑</div>
+            <div class="screen-empty" id="asset-empty">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span>点击选择、拖拽或粘贴图片 / GIF</span>
+            </div>
           </div>
           <div class="asset-bar-wrap"><i id="asset-bar"></i></div>
           <div class="asset-meta mono">
@@ -275,42 +283,79 @@
         </div>
 
         <div class="asset-controls">
-          <label class="field wide">图片 / GIF
+          <label class="file-drop-bar" for="asset-file">
+            <span class="file-drop-info">
+              <span class="file-drop-icon" aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+              </span>
+              <span class="file-drop-text" id="file-drop-label">选择图片或 GIF（PNG / JPG / WebP / GIF）</span>
+            </span>
+            <span class="chip no-dot" style="height:26px;font-size:11px">浏览</span>
             <input type="file" id="asset-file" accept="image/png,image/jpeg,image/bmp,image/webp,image/gif">
           </label>
-          <div class="grid-2" style="margin-top:12px">
-            <label class="field">适配
-              <select id="asset-fit">
-                <option value="contain">完整显示</option>
-                <option value="cover">铺满裁切</option>
-                <option value="stretch">拉伸填满</option>
-              </select>
-            </label>
-            <label class="field">缩放
-              <input type="range" id="asset-zoom" min="0.4" max="3.5" step="0.05" value="1">
-              <span id="asset-zoom-val" class="mono">100%</span>
-            </label>
-            <label class="field">阈值
-              <input type="range" id="asset-threshold" min="0" max="255" value="128">
-              <span id="asset-threshold-val" class="mono">128</span>
-            </label>
-            <label class="field">亮度
-              <input type="range" id="asset-brightness" min="-100" max="100" value="0">
-              <span id="asset-brightness-val" class="mono">0</span>
-            </label>
-            <label class="field">对比度
-              <input type="range" id="asset-contrast" min="0.2" max="3" step="0.05" value="1">
-              <span id="asset-contrast-val" class="mono">1.0</span>
-            </label>
-            <label class="field">反色 <input type="checkbox" id="asset-invert"></label>
-            <label class="field">抖动 <input type="checkbox" id="asset-dither"></label>
-            <label class="field">设为待机画面 <input type="checkbox" id="asset-standby" checked></label>
-            <label class="field">上传后暂停歌词 <input type="checkbox" id="asset-pause"></label>
+
+          <div class="ctrl-row" style="margin-top:12px">
+            <span class="ctrl-label">画面适配</span>
+            <div class="seg" role="group" aria-label="画面适配" id="asset-fit-seg">
+              <button type="button" data-val="contain" aria-pressed="true">完整显示</button>
+              <button type="button" data-val="cover" aria-pressed="false">铺满裁切</button>
+              <button type="button" data-val="stretch" aria-pressed="false">拉伸填满</button>
+            </div>
+            <select id="asset-fit" hidden>
+              <option value="contain">完整显示</option>
+              <option value="cover">铺满裁切</option>
+              <option value="stretch">拉伸填满</option>
+            </select>
           </div>
+
+          <div class="slider-grid">
+            <div class="slider-field">
+              <div class="slider-field-head">
+                <label for="asset-zoom">缩放</label>
+                <span id="asset-zoom-val" class="val mono">100%</span>
+              </div>
+              <input type="range" id="asset-zoom" min="0.4" max="3.5" step="0.05" value="1">
+            </div>
+
+            <div class="slider-field">
+              <div class="slider-field-head">
+                <label for="asset-threshold">阈值</label>
+                <span id="asset-threshold-val" class="val mono">128</span>
+              </div>
+              <input type="range" id="asset-threshold" min="0" max="255" value="128">
+            </div>
+
+            <div class="slider-field">
+              <div class="slider-field-head">
+                <label for="asset-brightness">亮度</label>
+                <span id="asset-brightness-val" class="val mono">0</span>
+              </div>
+              <input type="range" id="asset-brightness" min="-100" max="100" value="0">
+            </div>
+
+            <div class="slider-field">
+              <div class="slider-field-head">
+                <label for="asset-contrast">对比度</label>
+                <span id="asset-contrast-val" class="val mono">1.0</span>
+              </div>
+              <input type="range" id="asset-contrast" min="0.2" max="3" step="0.05" value="1">
+            </div>
+          </div>
+
+          <div class="chip-row">
+            <label class="chip-toggle"><input type="checkbox" id="asset-invert"><span>反色</span></label>
+            <label class="chip-toggle"><input type="checkbox" id="asset-dither"><span>抖动</span></label>
+            <label class="chip-toggle"><input type="checkbox" id="asset-standby" checked><span>设为待机画面</span></label>
+            <label class="chip-toggle"><input type="checkbox" id="asset-pause"><span>上传后暂停歌词</span></label>
+          </div>
+
           <div class="actions">
-            <button type="button" id="btn-upload" class="primary">上传到音箱</button>
+            <button type="button" id="btn-upload" class="primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              上传到音箱
+            </button>
             <button type="button" id="btn-showasset">立即显示</button>
-            <button type="button" id="btn-reset-view">重置视图</button>
+            <button type="button" id="btn-reset-view" class="subtle">重置视图</button>
             <button type="button" id="btn-sample" class="ghost">载入示例图</button>
           </div>
         </div>
@@ -334,24 +379,32 @@
 
       <div class="ctrl-stack" style="gap:10px">
         <div class="ctrl-row">
-          <label class="switch"><input type="checkbox" id="autostart"> 开机自动启动 halobar</label>
-          <button type="button" id="btn-shortcut" class="sm">创建桌面快捷方式</button>
+          <span class="ctrl-label">开机自动启动 halobar</span>
+          <div style="display:flex;gap:10px;align-items:center">
+            <button type="button" id="btn-shortcut" class="sm">创建桌面快捷方式</button>
+            <label class="toggle"><input type="checkbox" id="autostart"></label>
+          </div>
         </div>
         <div class="ctrl-row">
-          <label class="switch"><input type="checkbox" id="auto-update"> 启动时检查更新</label>
-          <select id="update-proxy" aria-label="更新代理">
-            <option value="auto">自动检测代理</option>
-            <option value="none">直连（无代理）</option>
-          </select>
+          <span class="ctrl-label">启动时自动检查更新</span>
+          <div style="display:flex;gap:10px;align-items:center">
+            <select id="update-proxy" aria-label="更新代理">
+              <option value="auto">自动代理</option>
+              <option value="none">直连</option>
+            </select>
+            <label class="toggle"><input type="checkbox" id="auto-update" checked></label>
+          </div>
         </div>
       </div>
 
       <div class="divider"></div>
 
-      <p class="hint" id="update-line" style="margin-top:0">当前 v-</p>
-      <div class="actions" style="margin-top:10px">
-        <button type="button" id="btn-check-update" class="sm">检查更新</button>
-        <button type="button" id="btn-update" class="primary sm" hidden>立即更新</button>
+      <div class="ctrl-row">
+        <p class="hint" id="update-line" style="margin:0">当前 v-</p>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button type="button" id="btn-check-update" class="sm">检查更新</button>
+          <button type="button" id="btn-update" class="primary sm" hidden>立即更新</button>
+        </div>
       </div>
       <div class="progress" id="update-progress" style="margin-top:10px" hidden><i id="update-bar"></i></div>
       <details id="update-notes" hidden style="margin-top:10px">

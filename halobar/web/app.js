@@ -39,6 +39,116 @@ const hexToRgb = (hex) => {
   ];
 };
 
+function paintSlider(el) {
+  if (!el) return;
+  const min = Number(el.min || 0);
+  const max = Number(el.max || 100);
+  const val = Number(el.value || 0);
+  const pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
+  el.style.setProperty('--fill', `${Math.max(0, Math.min(100, pct))}%`);
+}
+
+function paintAllSliders() {
+  document.querySelectorAll('input[type="range"]').forEach(paintSlider);
+}
+
+// ------------------------------------------------------------ custom selects
+const customSelects = new Map();
+
+function closeAllSelects(exceptWrap = null) {
+  customSelects.forEach(({ wrap, btn, menu }) => {
+    if (wrap !== exceptWrap) {
+      wrap.classList.remove('open');
+      btn.setAttribute('aria-expanded', 'false');
+      menu.hidden = true;
+    }
+  });
+}
+
+function syncSelectUI(sel) {
+  const entry = customSelects.get(sel);
+  if (!entry) return;
+  const opt = sel.options[sel.selectedIndex] || sel.options[0];
+  entry.valEl.textContent = opt ? opt.textContent : '';
+  entry.menu.querySelectorAll('.cselect-opt').forEach((item) => {
+    item.setAttribute('aria-selected', String(item.dataset.val === sel.value));
+  });
+}
+
+function syncAllSelects() {
+  customSelects.forEach((_, sel) => syncSelectUI(sel));
+}
+
+function enhanceSelect(sel) {
+  if (!sel || sel.hidden || customSelects.has(sel)) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'cselect';
+  sel.parentNode.insertBefore(wrap, sel);
+  wrap.appendChild(sel);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'cselect-btn';
+  btn.setAttribute('aria-haspopup', 'listbox');
+  btn.setAttribute('aria-expanded', 'false');
+  if (sel.getAttribute('aria-label')) btn.setAttribute('aria-label', sel.getAttribute('aria-label'));
+  btn.innerHTML = '<span class="cselect-val"></span>'
+    + '<svg class="cselect-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+
+  const menu = document.createElement('div');
+  menu.className = 'cselect-menu';
+  menu.setAttribute('role', 'listbox');
+  menu.hidden = true;
+
+  Array.from(sel.options).forEach((opt) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'cselect-opt';
+    item.dataset.val = opt.value;
+    item.setAttribute('role', 'option');
+    item.innerHTML = '<span></span>'
+      + '<svg class="cselect-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    item.querySelector('span').textContent = opt.textContent;
+    item.onclick = () => {
+      sel.value = opt.value;
+      syncSelectUI(sel);
+      closeAllSelects();
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    menu.appendChild(item);
+  });
+
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const opening = menu.hidden;
+    closeAllSelects(wrap);
+    if (opening) {
+      const rect = btn.getBoundingClientRect();
+      menu.classList.toggle('up', window.innerHeight - rect.bottom < 240 && rect.top > 240);
+      menu.hidden = false;
+      wrap.classList.add('open');
+      btn.setAttribute('aria-expanded', 'true');
+    } else {
+      closeAllSelects();
+    }
+  };
+
+  wrap.appendChild(btn);
+  wrap.appendChild(menu);
+  customSelects.set(sel, { wrap, btn, menu, valEl: btn.querySelector('.cselect-val') });
+  syncSelectUI(sel);
+}
+
+function initCustomSelects() {
+  document.querySelectorAll('select:not([hidden])').forEach(enhanceSelect);
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.cselect')) closeAllSelects();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAllSelects();
+  });
+}
+
 // ---------------------------------------------------------------------- toast
 let toastTimer = null;
 function showToast(message, isError = false) {
@@ -343,6 +453,7 @@ function syncAmbientUI(amb) {
   $('ambient-controls').style.opacity = enabled ? '1' : '0.45';
   if (document.activeElement !== $('ambient-effect')) {
     $('ambient-effect').value = String(effect);
+    syncSelectUI($('ambient-effect'));
   }
   const rgb = amb.color || [195, 185, 255];
   const key = Array.isArray(rgb) ? rgb.join(',') : '';
@@ -355,10 +466,12 @@ function syncAmbientUI(amb) {
   if (document.activeElement !== $('ambient-brightness')) {
     $('ambient-brightness').value = amb.brightness ?? 100;
     $('ambient-brightness-val').textContent = `${amb.brightness ?? 100}%`;
+    paintSlider($('ambient-brightness'));
   }
   if (document.activeElement !== $('ambient-speed')) {
     $('ambient-speed').value = amb.speed ?? 8;
     $('ambient-speed-val').textContent = String(amb.speed ?? 8);
+    paintSlider($('ambient-speed'));
   }
   // RGB applies to Breathing(1) and Static(3); Speed applies to Breathing(1) and Tide(2).
   $('ambient-color-row').hidden = ![1, 3].includes(effect);
@@ -447,6 +560,7 @@ async function refresh() {
       $('standby').value = s.settings.standby_after;
       $('auto-update').checked = s.settings.auto_check_updates !== false;
       $('update-proxy').value = s.settings.update_proxy || 'auto';
+      syncAllSelects();
       $('autostart').checked = !!s.settings.autostart;
       $('color-calibration').checked = s.settings.color_calibration !== false;
       $('ambient-sync').checked = !!s.settings.ambient_sync_color;
@@ -654,7 +768,9 @@ $('ambient-color-picker').addEventListener('input', () => {
 
 let ambBrightDebounce = null;
 $('ambient-brightness').addEventListener('input', () => {
-  const val = Number($('ambient-brightness').value);
+  const el = $('ambient-brightness');
+  paintSlider(el);
+  const val = Number(el.value);
   $('ambient-brightness-val').textContent = `${val}%`;
   clearTimeout(ambBrightDebounce);
   ambBrightDebounce = setTimeout(() => updateAmbient({ enabled: true, brightness: val }), 160);
@@ -662,7 +778,9 @@ $('ambient-brightness').addEventListener('input', () => {
 
 let ambSpeedDebounce = null;
 $('ambient-speed').addEventListener('input', () => {
-  const val = Number($('ambient-speed').value);
+  const el = $('ambient-speed');
+  paintSlider(el);
+  const val = Number(el.value);
   $('ambient-speed-val').textContent = String(val);
   clearTimeout(ambSpeedDebounce);
   ambSpeedDebounce = setTimeout(() => updateAmbient({ enabled: true, speed: val }), 160);
@@ -923,6 +1041,7 @@ function resetView() {
   view.zoom = 1; view.offsetX = 0; view.offsetY = 0;
   $('asset-zoom').value = 1;
   $('asset-zoom-val').textContent = '100%';
+  paintSlider($('asset-zoom'));
   renderPreview();
 }
 
@@ -935,12 +1054,23 @@ async function loadImageFile(file) {
     showToast('无法读取这张图片', true);
     return;
   }
-  $('asset-info').textContent = `${file.name || '剪贴板图片'} · ${sourceImage.width}×${sourceImage.height}`;
+  const label = `${file.name || '剪贴板图片'} · ${sourceImage.width}×${sourceImage.height}`;
+  $('asset-info').textContent = label;
+  if ($('file-drop-label')) $('file-drop-label').textContent = label;
   $('asset-progress').textContent = '';
   resetView();
 }
 
 $('asset-file').onchange = () => loadImageFile($('asset-file').files[0]);
+$('asset-empty').onclick = () => $('asset-file').click();
+
+$('asset-fit-seg').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-val]');
+  if (!btn) return;
+  setSegValue('asset-fit-seg', btn.dataset.val);
+  $('asset-fit').value = btn.dataset.val;
+  renderPreview();
+});
 
 // Drag & drop + clipboard paste
 const dropzone = $('asset-dropzone');
@@ -975,14 +1105,17 @@ window.addEventListener('paste', (e) => {
       if (id === 'asset-threshold') $('asset-threshold-val').textContent = el.value;
       if (id === 'asset-brightness') $('asset-brightness-val').textContent = el.value;
       if (id === 'asset-contrast') $('asset-contrast-val').textContent = Number(el.value).toFixed(1);
+      if (el.type === 'range') paintSlider(el);
       renderPreview();
     });
     el.addEventListener('change', renderPreview);
   });
 
 $('asset-zoom').addEventListener('input', () => {
-  view.zoom = Number($('asset-zoom').value);
+  const el = $('asset-zoom');
+  view.zoom = Number(el.value);
   $('asset-zoom-val').textContent = Math.round(view.zoom * 100) + '%';
+  paintSlider(el);
   renderPreview();
 });
 
@@ -1013,6 +1146,7 @@ viewCanvasEl.addEventListener('wheel', (e) => {
   view.zoom = Math.max(0.4, Math.min(3.5, view.zoom + (e.deltaY < 0 ? 0.1 : -0.1)));
   $('asset-zoom').value = view.zoom;
   $('asset-zoom-val').textContent = Math.round(view.zoom * 100) + '%';
+  paintSlider($('asset-zoom'));
   renderPreview();
 }, { passive: false });
 
@@ -1038,6 +1172,7 @@ function loadSample() {
   createImageBitmap(c).then((bitmap) => {
     setSourceImage(bitmap);
     $('asset-info').textContent = '示例图 · 256×32';
+    if ($('file-drop-label')) $('file-drop-label').textContent = 'halo-sample.png · 256×32';
     $('asset-progress').textContent = '';
     resetView();
   });
@@ -1126,6 +1261,8 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+initCustomSelects();
+paintAllSliders();
 refresh();
 refreshLogs();
 if (!document.hidden) startPolling();
